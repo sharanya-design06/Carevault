@@ -1,4 +1,6 @@
 {
+  "firestore": { "rules": "firestore.rules" },
+  "storage": { "rules": "storage.rules" },
   "hosting": {
     "public": "public",
     "ignore": [
@@ -38,7 +40,7 @@
           },
           {
             "key": "Content-Security-Policy",
-            "value": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; object-src 'self' blob:; frame-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            "value": "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; connect-src 'self' https://firestore.googleapis.com https://firebasestorage.googleapis.com; object-src 'self' blob:; frame-src 'self' blob:; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
           }
         ]
       },

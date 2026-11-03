@@ -1,0 +1,7 @@
+rules_version = '2';
+// DEMO ONLY: see firestore.rules. Replace with Firebase Auth-based rules before real use.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /reports/{id} { allow read; allow write: if request.resource.size < 10 * 1024 * 1024 && request.resource.contentType == 'application/pdf'; }
+  }
+}

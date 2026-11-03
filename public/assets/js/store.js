@@ -213,8 +213,8 @@
   }
 
   const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('carevault-files', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-  async function idbPut(key, value) { const d = await idbOpen(); return new Promise((res, rej) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(value, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
-  async function idbGet(key) { const d = await idbOpen(); return new Promise((res, rej) => { const q = d.transaction('files').objectStore('files').get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+  async function idbPut(key, value) { if (REMOTE) return REMOTE.putFile(key, value); const d = await idbOpen(); return new Promise((res, rej) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(value, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
+  async function idbGet(key) { if (REMOTE) return REMOTE.getFile(key); const d = await idbOpen(); return new Promise((res, rej) => { const q = d.transaction('files').objectStore('files').get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
   const readBytes = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(file); });
   async function sha256Bytes(buf) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))).map((b) => b.toString(16).padStart(2, '0')).join(''); }
 
@@ -274,7 +274,20 @@
 
   let db = null;
 
-  function save() { localStorage.setItem(KEY, JSON.stringify(db)); }
+  const REMOTE = window.Remote && window.Remote.enabled ? window.Remote : null;
+  const adopt = (merged) => { Object.keys(merged).forEach((k) => { if (JSON.stringify(db[k]) !== JSON.stringify(merged[k])) db[k] = merged[k]; }); localStorage.setItem(KEY, JSON.stringify(db)); };
+
+  function save() {
+    localStorage.setItem(KEY, JSON.stringify(db));
+    if (REMOTE) REMOTE.push(db).then((m) => { if (db) adopt(m); }).catch((e) => console.warn('CareVault shared storage:', e.message));
+  }
+
+  // Pick up changes other team members saved to shared storage.
+  function startSync() {
+    const refresh = () => REMOTE.pull().then((r) => { if (db) Object.keys(r).forEach((k) => { db[k] = REMOTE.merge(db[k], r[k], true); }); localStorage.setItem(KEY, JSON.stringify(db)); }).catch(() => {});
+    setInterval(refresh, 15000);
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
+  }
 
   async function seed() {
     const hp = await sha256('Hospital@123');
@@ -374,8 +387,12 @@
 
   async function load() {
     if (db) return;
-    try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; }
+    if (REMOTE) {
+      try { const r = await REMOTE.pull(); if (r.admins) db = r; } catch (e) { console.warn('CareVault shared storage unavailable, using local cache:', e.message); }
+    }
+    if (!db) { try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; } }
     if (!db) await seed();
+    if (REMOTE) startSync();
     ['clinicalRecords', 'allergies', 'medications', 'reports', 'emergencyGrants'].forEach((key) => {
       if (!Array.isArray(db[key])) db[key] = [];
     });

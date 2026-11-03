@@ -1,4 +1,17 @@
 # Health-Care-DataWarehouse
+## Shared data (team setup)
+
+By default all data lives in each browser's localStorage/IndexedDB, so nothing one person creates is visible to teammates
+(nothing is written to files, so Git is not involved; `.gitignore` only excludes `.firebase/`). To share data:
+
+1. Enable Firestore and Cloud Storage in Firebase project `care-vault-project`.
+2. Put `apiKey`, `storageBucket` and `enabled: true` in `public/assets/js/remote-config.js`.
+3. `npx firebase-tools deploy --only firestore:rules,storage` (rules in `firestore.rules`/`storage.rules`).
+
+Records are stored per collection in Firestore (`carevault/<collection>`), report PDFs in Storage (`reports/<id>`).
+Concurrent saves merge by record id; other users' changes arrive within ~15 s or on tab focus. The bundled rules are
+open (demo only): add Firebase Auth and tighten them before real patient data. Each Firestore doc is limited to 1 MB.
+
 ## System Admin console
 
 Static app in `public/` (no build step), ready for Firebase Hosting.

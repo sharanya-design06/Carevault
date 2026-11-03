@@ -1,0 +1,8 @@
+rules_version = '2';
+// DEMO ONLY: the app has no server-side auth yet, so the shared data is open to anyone holding the API key.
+// Replace with Firebase Auth-based rules before storing real patient data.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /carevault/{doc} { allow read, write: if true; }
+  }
+}
