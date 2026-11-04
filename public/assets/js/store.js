@@ -387,11 +387,17 @@
 
   async function load() {
     if (db) return;
+    let remote = null;
     if (REMOTE) {
-      try { const r = await REMOTE.pull(); if (r.admins) db = r; } catch (e) { console.warn('CareVault shared storage unavailable, using local cache:', e.message); }
+      try { remote = await REMOTE.pull(); } catch (e) { console.warn('CareVault shared storage unavailable, using local cache:', e.message); }
     }
-    if (!db) { try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; } }
-    if (!db) await seed();
+    // Only a complete remote copy can stand alone; a partial one (e.g. an interrupted first push) is overlaid on local/seed data.
+    if (remote && remote.admins && remote.users && remote.patients && remote.hospitals && remote.audit) db = remote;
+    else {
+      if (!db) { try { db = JSON.parse(localStorage.getItem(KEY)); } catch (e) { db = null; } }
+      if (!db) await seed();
+      if (remote) { Object.keys(remote).forEach((k) => { db[k] = REMOTE.merge(db[k], remote[k], true); }); save(); }
+    }
     if (REMOTE) startSync();
     ['clinicalRecords', 'allergies', 'medications', 'reports', 'emergencyGrants'].forEach((key) => {
       if (!Array.isArray(db[key])) db[key] = [];
