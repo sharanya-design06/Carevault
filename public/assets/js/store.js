@@ -213,8 +213,17 @@
   }
 
   const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('carevault-files', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
-  async function idbPut(key, value) { if (REMOTE) return REMOTE.putFile(key, value); const d = await idbOpen(); return new Promise((res, rej) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(value, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); }
-  async function idbGet(key) { if (REMOTE) return REMOTE.getFile(key); const d = await idbOpen(); return new Promise((res, rej) => { const q = d.transaction('files').objectStore('files').get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); }
+  const idbLocalPut = async (key, value) => { const d = await idbOpen(); return new Promise((res, rej) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(value, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); };
+  const idbLocalGet = async (key) => { const d = await idbOpen(); return new Promise((res, rej) => { const q = d.transaction('files').objectStore('files').get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); };
+  // Shared Cloud Storage when available; otherwise (e.g. Storage not enabled yet) keep the file in this browser only.
+  async function idbPut(key, value) {
+    if (REMOTE) { try { return await REMOTE.putFile(key, value); } catch (e) { console.warn('CareVault file storage unavailable, saving locally:', e.message); } }
+    return idbLocalPut(key, value);
+  }
+  async function idbGet(key) {
+    if (REMOTE) { try { const f = await REMOTE.getFile(key); if (f) return f; } catch (e) { /* fall through to local copy */ } }
+    return idbLocalGet(key);
+  }
   const readBytes = (file) => new Promise((res, rej) => { const r = new FileReader(); r.onload = () => res(r.result); r.onerror = () => rej(r.error); r.readAsArrayBuffer(file); });
   async function sha256Bytes(buf) { return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', buf))).map((b) => b.toString(16).padStart(2, '0')).join(''); }
 
