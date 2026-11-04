@@ -1,6 +1,7 @@
 {
   "firestore": { "rules": "firestore.rules" },
   "storage": { "rules": "storage.rules" },
+  "functions": [{ "source": "functions", "codebase": "default", "ignore": ["node_modules"] }],
   "hosting": {
     "public": "public",
     "ignore": [
@@ -9,6 +10,10 @@
       "**/node_modules/**"
     ],
     "rewrites": [
+      {
+        "source": "/api/sendInvite",
+        "function": { "functionId": "sendInvite", "region": "asia-south1" }
+      },
       {
         "source": "**",
         "destination": "/index.html"

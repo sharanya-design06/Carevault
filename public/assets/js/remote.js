@@ -78,5 +78,11 @@
     return r.ok ? r.arrayBuffer() : null;
   }
 
-  window.Remote = { enabled, pull, push, merge, putFile, getFile };
+  // Asks the Cloud Function to email the invite/reset link to the address registered for this token.
+  async function sendMail(kind, token) {
+    const r = await fetch('/api/sendInvite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, token }) });
+    if (!r.ok) throw new Error('Email send failed (' + r.status + ')');
+  }
+
+  window.Remote = { enabled, pull, push, merge, putFile, getFile, sendMail };
 })();

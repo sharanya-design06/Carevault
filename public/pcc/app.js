@@ -59,7 +59,7 @@
         <p><b>${esc(created.name)}</b> was registered. Health Record ID (HRID):</p>
         <p class="big"><code>${esc(created.hrid)}</code></p>
         ${created.invite ? `<p>An account invitation was issued to <b>${esc(created.email)}</b>, valid until ${fmt(created.invite.expiresAt)}. The patient sets their own password.</p>
-          <p class="mut">Email delivery needs a backend (Cloud Function). In this demo, share the link manually:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>`
+          <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>`
           : '<p class="mut">No email was provided, so no patient account was created. The patient is identified by HRID only.</p>'}
         <p class="actions"><a class="btn primary" href="#/patients/${esc(created.id)}">View details</a><a class="btn" href="#/patients/new">Register another</a></p></div>`);
     }
@@ -100,7 +100,7 @@
       return shell(active, `<h1>${esc(role)} account created</h1><div class="card">
         <p><b>${esc(created.name)}</b> was created with status ${badge('pending')}. A password-setup invitation was issued to <b>${esc(created.email)}</b>, valid until ${fmt(created.invite.expiresAt)}.
         The staff member sets their own password.</p>
-        <p class="mut">Email delivery needs a backend (Cloud Function). In this demo, share the link manually:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>
+        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>
         <p class="actions"><a class="btn primary" href="#/staff">Staff list</a><a class="btn" href="#/${active}">Create another</a></p></div>`);
     }
     return shell(active, `<h1>Create ${esc(role)} Account</h1><form class="card" data-form="addStaff"><input type="hidden" name="role" value="${esc(role)}">

@@ -50,7 +50,7 @@
       return shell('hospitals/new', `<h1>Hospital registered</h1><div class="card">
         <p><b>${esc(created.name)}</b> was created with status ${badge('pending')}. A password-setup invitation was issued to <b>${esc(created.email)}</b>
         (valid until ${fmt(created.invite.expiresAt)}).</p>
-        <p class="mut">Email delivery requires a backend (e.g. Cloud Function + Firebase Auth email link). In this demo, share the link manually:</p>
+        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p>
         <div class="linkbox">${esc(S.inviteLink(created))}</div>
         <p class="actions"><a class="btn primary" href="#/hospitals/${esc(created.id)}">View details</a><a class="btn" href="#/hospitals/new">Register another</a></p></div>`);
     }

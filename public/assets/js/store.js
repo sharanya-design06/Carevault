@@ -279,12 +279,30 @@
 
   function save() {
     localStorage.setItem(KEY, JSON.stringify(db));
-    if (REMOTE) REMOTE.push(db).then((m) => { if (db) adopt(m); }).catch((e) => console.warn('CareVault shared storage:', e.message));
+    if (REMOTE) REMOTE.push(db).then((m) => { if (db) { adopt(m); mailPending(); } }).catch((e) => console.warn('CareVault shared storage:', e.message));
+  }
+
+  // Emails invitation and reset links created in this session, once they are in shared storage (the function
+  // reads them from there). Tokens that came from storage or other people's sync were handled by whoever made them.
+  const seenTokens = new Set();
+  function tokensOf(d) {
+    const out = [];
+    ['hospitals', 'users', 'patients'].forEach((k) => (d[k] || []).forEach((x) => { if (x && x.email && x.invite && x.invite.token) out.push(['invite', x.invite.token, x.invite.expiresAt]); }));
+    ['admins', 'users', 'patients'].forEach((k) => (d[k] || []).forEach((x) => { if (x && x.email && x.reset && x.reset.token) out.push(['reset', x.reset.token, x.reset.expiresAt]); }));
+    return out;
+  }
+  function markSeen(d) { tokensOf(d).forEach((t) => seenTokens.add(t[1])); }
+  function mailPending() {
+    tokensOf(db).forEach(([kind, token, exp]) => {
+      if (seenTokens.has(token) || new Date(exp) <= new Date()) return;
+      seenTokens.add(token);
+      REMOTE.sendMail(kind, token).catch((e) => console.warn('CareVault email:', e.message));
+    });
   }
 
   // Pick up changes other team members saved to shared storage.
   function startSync() {
-    const refresh = () => REMOTE.pull().then((r) => { if (db) Object.keys(r).forEach((k) => { db[k] = REMOTE.merge(db[k], r[k], true); }); localStorage.setItem(KEY, JSON.stringify(db)); }).catch(() => {});
+    const refresh = () => REMOTE.pull().then((r) => { if (db) { markSeen(r); Object.keys(r).forEach((k) => { db[k] = REMOTE.merge(db[k], r[k], true); }); } localStorage.setItem(KEY, JSON.stringify(db)); }).catch(() => {});
     setInterval(refresh, 15000);
     document.addEventListener('visibilitychange', () => { if (!document.hidden) refresh(); });
   }
@@ -398,7 +416,7 @@
       if (!db) await seed();
       if (remote) { Object.keys(remote).forEach((k) => { db[k] = REMOTE.merge(db[k], remote[k], true); }); save(); }
     }
-    if (REMOTE) startSync();
+    if (REMOTE) { markSeen(db); startSync(); }
     ['clinicalRecords', 'allergies', 'medications', 'reports', 'emergencyGrants'].forEach((key) => {
       if (!Array.isArray(db[key])) db[key] = [];
     });

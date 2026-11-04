@@ -69,7 +69,7 @@
       return shell('staff/new', `<h1>Staff account created</h1><div class="card">
         <p><b>${esc(created.name)}</b> (${esc(created.role)}) was created with status ${badge('pending')}. An activation invitation was issued to <b>${esc(created.email)}</b>,
         valid until ${fmt(created.invite.expiresAt)}. The staff member sets their own password; you never see it.</p>
-        <p class="mut">Email delivery needs a backend (Cloud Function). In this demo, share the link manually:</p>
+        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p>
         <div class="linkbox">${esc(S.inviteLink(created))}</div>
         <p class="actions"><a class="btn primary" href="#/staff/${esc(created.id)}">View details</a><a class="btn" href="#/staff/new">Create another</a></p></div>`);
     }
