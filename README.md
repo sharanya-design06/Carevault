@@ -33,7 +33,10 @@ public/
 After login the user is sent to their own folder; each console redirects back to the login page if the
 session is missing or has the wrong role.
 
-- Run locally: `npx firebase-tools emulators:start --only hosting` (or `npx serve public`)
+- Prepare local AI assets once after cloning: `npm ci` then `npm run prepare:ai-assets`.
+- Run locally: `npx firebase-tools emulators:start --only hosting` (or `npx serve public`). Firebase Hosting
+  also prepares the assets automatically before deployment; install root dependencies with `npm ci` first.
+- The optional local Python AI service and model setup are documented below.
 - Deploy (Firebase project `care-vault-project`, set in `.firebaserc`): `npx firebase-tools login`, then `npx firebase-tools deploy --only hosting`
 - Demo logins (one shared login page, role decides the console; data lives in browser localStorage):
   - System Admin: `sysadmin@carevault.com` / `Admin@123`
@@ -64,7 +67,8 @@ Deactivate Staff. PCC cannot create PCC/admin accounts, cannot touch other roles
 
 Doctor console (`/doctor/`): Dashboard, Patient Search (HRID, or date of birth + name/phone), patient workspace with
 Overview (allergies, current medications, risk indicators, latest AI summaries), Medical History, Health Timeline
-(hospital + author provenance), Reports (PDF + AI summary), Disease Risk dashboard, Diagnosis Entry, Prescription
+(hospital + author provenance), Reports (PDF + AI summary), Disease Risk dashboard (transparent screening indicators
+and optional local research-model assessment), Diagnosis Entry, Prescription
 with allergy/interaction/duplicate checks (serious alerts need an override reason), Emergency Access (category +
 reason, 30-minute grant, audited at both hospitals) and Access History. Patients are reachable only at the doctor's
 own hospital or during emergency access; other hospitals' records appear only if marked shared (otherwise a hidden-record
@@ -72,7 +76,7 @@ count is shown).
 
 Lab console (`/lab/`): Dashboard, Patient Search (own hospital), Upload Medical Report (PDF only, validated, max 10 MB,
 SHA-256 recorded), Report Details with upload provenance, Uploaded Reports (mine / hospital) and AI Processing Result.
-PDFs are kept in browser IndexedDB in this demo.
+PDFs use the configured Firebase Storage when remote storage is enabled; otherwise they are kept in browser IndexedDB.
 
 Pharmacist console (`/pharmacist/`): Dashboard, Patient Search (own hospital), Medication List, Allergy Profile,
 Add Prescription/Medication with allergy, interaction and duplicate checks, a CRITICAL/Warning alert before
@@ -83,14 +87,77 @@ Record Vitals (temperature, pulse, BP, respiratory rate, SpO2, weight, pain; ran
 and Vital History. Vitals are append-only: an update creates a new entry referencing the earlier one.
 
 Patient portal (`/patient/`): Dashboard, My Profile (contact details only), My HRID, Medical History, Health Timeline,
-Medical Reports with AI summaries, Prescription History, Allergies, Access History (staff who accessed the record),
+Medical Reports with automated summaries, Prescription History, Allergies, Access History (staff who accessed the record),
 Emergency Access History, Consent Management (cross-hospital sharing is enforced for clinicians; the emergency
 notification preference is stored only), Account Settings and Change Password. Patients get an account when PCC
 registers them with an email (invitation link) and sign in on the same login page.
 
-Caveats: AI report summaries (simple value extraction from PDF text) and risk scores (transparent rule-based
-screening estimate) are simulated demos, not clinical tools. All access checks run in the browser and must be
-enforced by a trusted backend (Firebase Auth, Firestore rules, Cloud Functions/Storage) before production.
+AI caveats: report summaries extract selectable PDF text and common lab values. The optional extractive TF-IDF
+summarizer is fit on the repository's `mtsamples.csv` transcriptions; its `description` field is only a weak
+reference for held-out ROUGE evaluation, not a clinician-reviewed summary. It does not interpret scans and is not
+fine-tuned BioBERT/T5. Drug checks are a rule-based lookup using the bundled interaction dataset plus a few
+severity-labelled examples; dataset provenance/licensing is unverified, most source rows have no severity, coverage
+is incomplete, and no alert does not mean a combination is safe. The training pipeline compares Logistic Regression,
+Random Forest, XGBoost and SVM on the repository's diabetes, heart and liver datasets, uses a stratified holdout and
+nested training-only cross-validation, and reports precision, recall, F1, ROC-AUC and average precision. It treats documented
+zero-valued Pima measurements as missing and maps the liver dataset's 1/2 label explicitly. Thresholds favor precision
+subject to a minimum training-fold recall; holdout results are estimates from small datasets, not guaranteed
+performance. The diabetes benchmark contains only women aged 21 or older; the cardiac cohort is small and historic,
+and the liver data comes from an Indian cohort. Dataset provenance/fitness needs review; models are not clinically
+validated or calibrated, no
+hypertension model is provided, and a score is not a diagnosis. The transparent rule-based indicators remain separate
+and are not model predictions. The synopsis's licensed DrugBank, Indiana Radiology reports/reference summaries, and
+clinical validation data are not present. All features are prototypes, not clinical tools, and require clinician review.
+Do not send real patient data to this service. The app's existing shared Firestore/Storage features can sync data
+(including uploaded PDFs) to Firebase when enabled. All access checks run in the browser and must be enforced by a
+trusted backend (Firebase Auth,
+Firestore rules, Cloud Functions/Storage) before production.
+
+Latest local benchmark run (fixed stratified 20% holdout; selected threshold and model chosen using training data only):
+
+| Dataset/task | Selected model | Holdout accuracy | Precision | Recall | F1 | ROC-AUC |
+|---|---|---:|---:|---:|---:|---:|
+| Diabetes (154 test rows) | Logistic Regression | 0.7273 | 0.6579 | 0.4630 | 0.5435 | 0.8126 |
+| Heart disease (61 test rows) | Logistic Regression | 0.7705 | 0.8800 | 0.6667 | 0.7586 | 0.8712 |
+| Liver disease (117 test rows) | XGBoost | 0.6496 | 0.9038 | 0.5663 | 0.6963 | 0.7743 |
+| Report summaries (974 grouped test examples) | TF-IDF extractive | — | — | — | ROUGE-1: 0.2908; ROUGE-2: 0.2202; ROUGE-L: 0.2657 | — |
+
+These are reproducible prototype baselines, not evidence of high or clinically safe accuracy. In particular, diabetes
+holdout precision is only 0.6579 and its recall is 0.4630; the summary scores are modest and use dataset descriptions
+as weak references. The holdout samples are small and from the same source datasets, so real-world performance may be
+lower. Drug-interaction data has no reliable labeled severity/ground-truth set here, so accuracy/precision cannot be
+validly measured. Do not use any of these results to make care decisions.
+
+## Optional local Python AI prototype
+
+The Python service is intended only for local development. It serves the static app and its `/api/ai/` endpoints from
+the same loopback origin so report uploads, drug checks, and the doctor research-model form can use it without sending
+requests to a third-party AI provider. The static/Firebase-hosted app continues to use its browser fallbacks when the
+local service is not running. Disease model artifacts are generated locally and are not committed.
+
+From the repository root in PowerShell:
+
+```powershell
+python -m venv ai_service\.venv
+.\ai_service\.venv\Scripts\Activate.ps1
+python -m pip install -r ai_service\requirements.txt
+python -m unittest discover -s ai_service\tests
+python -m ai_service.train_models
+python -m ai_service.train_summarizer
+python -m uvicorn ai_service.app:app --host 127.0.0.1 --port 8000
+```
+
+Open `http://127.0.0.1:8000` and sign in to use the app. Check service/model status at
+`http://127.0.0.1:8000/api/ai/health` and endpoint schemas at `/docs`. Run training again after changing a dataset or
+training code. The doctor assessment form requires all listed features, prefills only values available in the record,
+and sends only those feature values (not the patient ID) to the loopback service. Training writes holdout metrics to
+`ai_service\models\training-report.json`; summarizer training writes ROUGE evaluation to
+`ai_service\models\summarizer-report.json`. Artifacts are intentionally ignored by Git and must be regenerated locally.
+
+This local setup has no Firebase Auth verification, patient authorization, production privacy controls, or clinical
+validation. Do not expose it on a network or deploy it for real health data. A production integration needs a trusted
+authenticated backend, reviewed/licensed data, clinical governance, and independent validation. A model trained on
+the included small benchmark datasets is not a substitute for those requirements.
 
 **Before production:** `public/assets/js/store.js` is a demo data layer. Replace it with
 Firebase Auth (custom claim `role=systemAdmin`), Firestore with security rules, and a

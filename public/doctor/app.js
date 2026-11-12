@@ -86,18 +86,20 @@
   }
   function riskBars(d, detail) {
     return `${d.risks.map((r) => `<div class="risk"><div><b>${esc(r.condition)}</b></div>
-      <progress max="100" value="${r.score}" aria-label="${esc(r.condition)} risk score">${r.score}</progress>
-      <div>${badge(r.level.toLowerCase())} ${r.diagnosed ? '' : r.score + '/100'}<br><span class="mut">Confidence ${r.confidence}%</span></div></div>
+      ${Number.isFinite(r.score) ? `<progress max="100" value="${r.score}" aria-label="${esc(r.condition)} screening score">${r.score}</progress>` : '<p class="mut">Insufficient data for a screening score.</p>'}
+      <div>${badge(r.level.toLowerCase())} ${r.diagnosed || !Number.isFinite(r.score) ? '' : r.score + '/100 screening score'}<br><span class="mut">Data completeness ${r.confidence}%</span></div></div>
       ${detail ? `<details><summary>Factors</summary><ul>${r.factors.map((f) => `<li>${esc(f.label)}: ${f.known ? f.earned + '/' + f.max : '<span class="mut">data not available</span>'}</li>`).join('')}</ul></details>` : ''}`).join('')}
-      <p class="mut">Screening estimate from a transparent rule-based heuristic, not a validated clinical model. Confidence reflects data completeness. Does not replace clinical judgement.</p>`;
+      <p class="mut">Experimental, rule-based screening scores—not disease predictions or probabilities. Missing measurements are excluded from the score. These unvalidated demo estimates must not guide care; clinician review is required.</p>`;
   }
   function summaryBlock(r) {
-    if (r.processingStatus === 'processing') return '<p>' + badge('processing') + ' AI summary is being generated…</p>';
+    if (r.processingStatus === 'processing') return '<p>' + badge('processing') + ' Local report extraction is running…</p>';
     const s = r.summary;
     if (!s) return '<p class="mut">No summary available.</p>';
-    return `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
+    return `<p>${esc(s.headline)}</p>${s.summaryText ? `<p>${esc(s.summaryText)}</p>` : ''}
+      ${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
       ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-      <p class="mut">AI-generated (${esc(s.model || 'demo')}), demo only — requires clinician review against the source PDF.</p>`;
+      ${Array.isArray(s.highlights) && s.highlights.length ? `<h3>Report text highlights</h3><ul>${s.highlights.map((line) => `<li>${esc(line)}</li>`).join('')}</ul>` : ''}
+      <p class="mut">Automated local extraction (${esc(s.model || 'demo')}); not an AI diagnosis. Check every value against the source PDF.</p>`;
   }
 
   function overviewTab(d) {
@@ -106,7 +108,7 @@
     return `<div class="two">${allergyPanel(d)}${medPanel(d)}</div>
       <div class="card"><h2>Disease risk indicators</h2>${riskBars(d, false)}</div>
       ${vit.length ? `<div class="card"><h2>Latest vitals</h2><p>${vit.map((v) => `<span class="pill">${esc(v[0])}: ${esc(v[1])}</span>`).join(' ')}</p></div>` : ''}
-      <div class="card"><h2>Latest AI report summaries</h2>${d.reports.slice(0, 3).map((r) => `<h3><a href="#/report/${esc(r.id)}">${esc(r.title)}</a> <span class="mut">${day(r.uploadedAt)}</span></h3>${summaryBlock(r)}`).join('') || '<p class="mut">No reports.</p>'}</div>
+      <div class="card"><h2>Latest automated report summaries</h2>${d.reports.slice(0, 3).map((r) => `<h3><a href="#/report/${esc(r.id)}">${esc(r.title)}</a> <span class="mut">${day(r.uploadedAt)}</span></h3>${summaryBlock(r)}`).join('') || '<p class="mut">No reports.</p>'}</div>
       <div class="card"><h2>Recent timeline</h2>${timelineList(d.timeline.slice(0, 4))}</div>
       <div class="card actions"><a class="btn primary" href="#/patient/${esc(p.hrid)}/diagnosis">New diagnosis</a><a class="btn primary" href="#/patient/${esc(p.hrid)}/prescribe">New prescription</a></div>`;
   }
@@ -151,7 +153,7 @@
 
   function alertsHtml(res) {
     if (!res) return '';
-    if (!res.alerts.length) return alertBox('ok', 'No allergy or interaction alerts found for this medication.');
+    if (!res.alerts.length) return alertBox('warn', 'No alert was found in the available interaction data. This does not confirm the medication is safe; verify the full medication list with a pharmacist.');
     return res.alerts.map((a) => alertBox(a.severity === 'major' || a.severity === 'contraindicated' ? 'danger' : 'warn', `<b>${esc(a.type === 'allergy' ? 'Allergy alert' : a.type === 'duplicate' ? 'Duplicate therapy' : 'Interaction')} · ${esc(a.severity)}</b><br>${esc(a.message)}`)).join('');
   }
   function prescribeTab(d, err, form) {
@@ -166,11 +168,78 @@
       <label>Duration<input name="duration" maxlength="40" value="${esc(f.duration || '')}"></label>
       <label>Indication<input name="indication" maxlength="120" value="${esc(f.indication || '')}"></label>
       ${f.needsOverride ? `<label>Override reason (required, min 10 characters)<textarea name="override" rows="3" required minlength="10" maxlength="300"></textarea></label>` : ''}
+      <p class="mut">Interaction data may be incomplete and may not provide severity ratings. Verify alerts with a pharmacist.</p>
       <p><button type="button" data-action="check">Check safety</button> <button class="primary" type="submit">${f.needsOverride ? 'Prescribe despite alerts' : 'Prescribe'}</button></p></form>
       ${medPanel(d)}`;
   }
 
-  function riskTab(d) { return `<div class="card"><h2>Disease risk dashboard</h2>${riskBars(d, true)}</div>`; }
+  function modelField(name, label, value, min, max, step = 'any') {
+    return `<label>${label}<input name="${name}" type="number" value="${esc(value ?? '')}" min="${min}" max="${max}" step="${step}" required></label>`;
+  }
+  function modelChoice(name, label, options, value) {
+    return `<label>${label}<select name="${name}" required><option value="">Select…</option>${options.map(([key, text]) => `<option value="${key}" ${String(value) === String(key) ? 'selected' : ''}>${text}</option>`).join('')}</select></label>`;
+  }
+  function modelFields(condition, d) {
+    const p = d.patient, c = p.clinical || {}, patientAge = Number.isFinite(age(p.dob)) ? age(p.dob) : '';
+    if (condition === 'diabetes') {
+      let glucose = '';
+      for (const report of d.reports) {
+        const findings = report.summary && report.summary.findings || [];
+        const finding = findings.find((item) => /fasting glucose/i.test(item.test));
+        if (finding) { glucose = finding.value; break; }
+      }
+      return modelField('Pregnancies', 'Pregnancies', '', 0, 30, 1) +
+        modelField('Glucose', 'Glucose (mg/dL)', glucose, 0, 400) +
+        modelField('BloodPressure', 'Diastolic blood pressure (mmHg)', c.bpDia, 0, 200) +
+        modelField('SkinThickness', 'Skin thickness (mm)', '', 0, 150) +
+        modelField('Insulin', 'Insulin (µU/mL)', '', 0, 1000) +
+        modelField('BMI', 'BMI (kg/m²)', c.bmi, 0, 100) +
+        modelField('DiabetesPedigreeFunction', 'Diabetes pedigree function (dataset value)', '', 0, 5) +
+        modelField('Age', 'Age (years)', patientAge, 1, 120, 1);
+    }
+    const sex = /^female$/i.test(p.gender) ? 0 : /^male$/i.test(p.gender) ? 1 : '';
+    if (condition === 'cardiac') {
+      return modelField('age', 'Age (years)', patientAge, 1, 120, 1) +
+        modelChoice('sex', 'Dataset sex code (0=female, 1=male)', [[0, '0 — Female'], [1, '1 — Male']], sex) +
+        modelChoice('cp', 'Chest-pain category (dataset code)', [[0, '0'], [1, '1'], [2, '2'], [3, '3']]) +
+        modelField('trestbps', 'Resting blood pressure (mmHg)', c.bpSys, 0, 300) +
+        modelField('chol', 'Total cholesterol (mg/dL)', '', 0, 700) +
+        modelChoice('fbs', 'Fasting blood sugar > 120 mg/dL', [[0, '0 — No'], [1, '1 — Yes']]) +
+        modelChoice('restecg', 'Resting ECG (dataset code)', [[0, '0'], [1, '1'], [2, '2']]) +
+        modelField('thalach', 'Maximum heart rate', '', 0, 300) +
+        modelChoice('exang', 'Exercise-induced angina', [[0, '0 — No'], [1, '1 — Yes']]) +
+        modelField('oldpeak', 'ST depression (oldpeak)', '', 0, 20) +
+        modelChoice('slope', 'ST segment slope (dataset code)', [[0, '0'], [1, '1'], [2, '2']]) +
+        modelChoice('ca', 'Number of major vessels (dataset code)', [[0, '0'], [1, '1'], [2, '2'], [3, '3'], [4, '4']]) +
+        modelChoice('thal', 'Thalassemia (dataset code)', [[0, '0'], [1, '1'], [2, '2'], [3, '3']]);
+    }
+    return modelField('Age', 'Age (years)', patientAge, 1, 120, 1) +
+      modelChoice('Gender', 'Dataset gender', [[0, 'Female'], [1, 'Male']], sex) +
+      modelField('Total_Bilirubin', 'Total bilirubin', '', 0, 100) +
+      modelField('Direct_Bilirubin', 'Direct bilirubin', '', 0, 100) +
+      modelField('Alkaline_Phosphotase', 'Alkaline phosphatase', '', 0, 10000) +
+      modelField('Alamine_Aminotransferase', 'Alanine aminotransferase (ALT)', '', 0, 10000) +
+      modelField('Aspartate_Aminotransferase', 'Aspartate aminotransferase (AST)', '', 0, 10000) +
+      modelField('Total_Protiens', 'Total proteins', '', 0, 100) +
+      modelField('Albumin', 'Albumin', '', 0, 100) +
+      modelField('Albumin_and_Globulin_Ratio', 'Albumin/globulin ratio', '', 0, 100);
+  }
+  function modelPopulationNote(condition) {
+    const text = condition === 'diabetes'
+      ? 'Pima Indians benchmark; all records are women aged 21 or older.'
+      : condition === 'cardiac'
+        ? 'Small historic Cleveland cohort; representativeness for current patients is unknown.'
+        : 'Indian Liver Patient Dataset; representativeness outside its source cohort is unknown.';
+    return `<p class="mut" data-model-population><b>Dataset scope:</b> ${esc(text)}</p>`;
+  }
+  function riskTab(d) {
+    return `<div class="card"><h2>Disease risk dashboard</h2>${riskBars(d, true)}</div>
+      <div class="card"><h2>Research model assessment</h2>
+      <p class="mut">Optional locally trained research models. They return an uncalibrated dataset score, not a diagnosis or clinical risk. Confirm every input against the source record. No patient identifier is sent to the local service.</p>
+      <form data-form="ai-predict" data-hrid="${esc(d.patient.hrid)}"><label>Model<select name="condition" data-model-condition><option value="diabetes">Diabetes</option><option value="cardiac">Heart disease</option><option value="liver">Liver disease</option></select></label>
+      <div class="grid" data-model-fields>${modelFields('diabetes', d)}</div>${modelPopulationNote('diabetes')}<p><button class="primary" type="submit">Run local research model</button></p></form>
+      <div data-model-result aria-live="polite"></div><p class="mut">Requires the local Python AI service and trained model artifacts. <a href="/docs" target="_blank" rel="noopener">Local service API documentation</a>.</p></div>`;
+  }
 
   function patientView(hrid, tab, err, extra) {
     const d = S.doctorOpenPatient(hrid);
@@ -192,7 +261,7 @@
       <p>Category: ${esc(x.category)} · Uploaded ${esc(fmt(x.uploadedAt))} by ${esc(x.uploadedByName || x.uploadedBy)} at ${esc(x.hospitalName)}</p>
       <p>File: ${esc(x.fileName)} ${x.hasFile ? '' : '<span class="mut">(demo seed record, no file)</span>'}</p>
       ${x.hasFile ? `<button data-action="openPdf" data-id="${esc(x.id)}">Open PDF</button>` : ''}</div>
-      <div class="card"><h2>AI report summary</h2>${summaryBlock(x)}</div>`);
+      <div class="card"><h2>Automated report summary</h2>${summaryBlock(x)}</div>`);
   }
 
   async function render() {
@@ -212,13 +281,43 @@
     if (html) $app.innerHTML = html;
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
     const d = Object.fromEntries(new FormData(form));
     const k = form.dataset.form, hrid = form.dataset.hrid;
-    if (k === 'hrid') {
+    if (k === 'ai-predict') {
+      const condition = String(d.condition);
+      const fields = condition === 'diabetes'
+        ? ['Pregnancies', 'Glucose', 'BloodPressure', 'SkinThickness', 'Insulin', 'BMI', 'DiabetesPedigreeFunction', 'Age']
+        : condition === 'cardiac'
+          ? ['age', 'sex', 'cp', 'trestbps', 'chol', 'fbs', 'restecg', 'thalach', 'exang', 'oldpeak', 'slope', 'ca', 'thal']
+          : ['Age', 'Gender', 'Total_Bilirubin', 'Direct_Bilirubin', 'Alkaline_Phosphotase', 'Alamine_Aminotransferase', 'Aspartate_Aminotransferase', 'Total_Protiens', 'Albumin', 'Albumin_and_Globulin_Ratio'];
+      const features = Object.fromEntries(fields.map((name) => [name, Number(d[name])]));
+      const output = form.parentElement.querySelector('[data-model-result]');
+      output.innerHTML = alertBox('warn', 'Running the local research model…');
+      form.querySelector('button[type="submit"]').disabled = true;
+      form.elements.condition.disabled = true;
+      try {
+        const response = await fetch('/api/ai/v1/predict/' + condition, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ features }),
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.detail || 'The local model request failed.');
+        const metrics = result.metrics;
+        output.innerHTML = alertBox('warn', `<b>${esc(result.prediction === 'positive' ? 'Positive model screen' : 'Negative model screen')} (${Math.round(result.modelScore * 100)}% score)</b><br>
+          Target: ${esc(result.positiveLabel)} · Model: ${esc(result.model)} · Threshold: ${esc(result.decisionThreshold)}<br>
+          Holdout precision: ${esc(metrics.precision)} · recall: ${esc(metrics.recall)} · F1: ${esc(metrics.f1)} · AUC-ROC: ${esc(metrics.aucRoc)}<br>
+          Population limitation: ${esc(result.populationLimitation)}<br>
+          ${esc(result.notice)}`);
+      } catch (error) {
+        output.innerHTML = alertBox('danger', `Local model unavailable: ${esc(error.message)} Train the models and run the Python AI service on this origin.`);
+      } finally {
+        form.querySelector('button[type="submit"]').disabled = false;
+        form.elements.condition.disabled = false;
+      }
+    } else if (k === 'hrid') {
       const r = S.doctorFindPatient(d.hrid);
       if (r.ok) location.hash = '#/patient/' + r.patient.hrid;
       else $app.innerHTML = searchView(r.error);
@@ -236,7 +335,9 @@
       const r = S.doctorAmendRecord(d.recordId, d);
       if (r.ok) { toast('Amendment saved'); render(); } else toast(r.error);
     } else if (k === 'prescribe') {
-      const r = S.doctorCreatePrescription(hrid, d, d.override || '');
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      const r = await S.doctorCreatePrescription(hrid, d, d.override || '');
       if (r.ok) { toast(r.alerts && r.alerts.length ? 'Prescribed with alerts acknowledged' : 'Prescription saved'); location.hash = '#/patient/' + hrid; }
       else $app.innerHTML = patientView(hrid, 'prescribe', r.error, Object.assign({}, d, { needsOverride: !!r.needsOverride, check: r.alerts ? { alerts: r.alerts } : null }));
     }
@@ -247,8 +348,12 @@
     if (!b) return;
     if (b.dataset.action === 'logout') { S.logout(); location.href = '/'; }
     else if (b.dataset.action === 'check') {
-      const form = b.closest('form'), r = S.doctorMedicationCheck(form.dataset.hrid, form.elements.name.value);
-      if (r.ok === false) { toast(r.error || 'Enter a medication first'); return; }
+      const form = b.closest('form'), output = form.querySelector('#alerts');
+      b.disabled = true;
+      output.textContent = 'Checking available interaction data…';
+      const r = await S.doctorMedicationCheck(form.dataset.hrid, form.elements.name.value);
+      b.disabled = false;
+      if (r.ok === false) { output.innerHTML = alertBox('warn', esc(r.error || 'Enter a medication first')); return; }
       form.querySelector('#alerts').innerHTML = alertsHtml(r);
     } else if (b.dataset.action === 'openPdf') {
       const r = await S.doctorReportFile(b.dataset.id);
@@ -259,11 +364,22 @@
     }
   });
 
-  document.addEventListener('change', (e) => {
+  document.addEventListener('change', async (e) => {
     if (e.target.id === 'htype') { histType = e.target.value; render(); }
+    else if (e.target.matches('[data-model-condition]')) {
+      const form = e.target.closest('form');
+      form.querySelector('[data-model-fields]').innerHTML = modelFields(e.target.value, S.doctorOpenPatient(form.dataset.hrid) || {});
+      form.querySelector('[data-model-population]').outerHTML = modelPopulationNote(e.target.value);
+      form.parentElement.querySelector('[data-model-result]').innerHTML = '';
+    }
     else if (e.target.name === 'name' && e.target.closest('form[data-form="prescribe"]')) {
       const form = e.target.closest('form'), v = e.target.value.trim();
-      if (v) { const r = S.doctorMedicationCheck(form.dataset.hrid, v); if (r && r.alerts) form.querySelector('#alerts').innerHTML = alertsHtml(r); }
+      if (v) {
+        const output = form.querySelector('#alerts');
+        output.textContent = 'Checking available interaction data…';
+        const r = await S.doctorMedicationCheck(form.dataset.hrid, v);
+        output.innerHTML = r.ok ? alertsHtml(r) : alertBox('warn', esc(r.error));
+      }
     }
   });
 

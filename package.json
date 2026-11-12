@@ -1,0 +1,13 @@
+{
+  "name": "carevault-web-assets",
+  "private": true,
+  "engines": {
+    "node": ">=20.16"
+  },
+  "scripts": {
+    "prepare:ai-assets": "node scripts/prepare-ai-assets.js"
+  },
+  "devDependencies": {
+    "pdfjs-dist": "5.4.624"
+  }
+}

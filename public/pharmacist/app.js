@@ -57,7 +57,7 @@
 
   function alertsHtml(res) {
     if (!res) return '';
-    if (!res.alerts.length) return alertBox('ok', 'No allergy or interaction alerts found for this medication.');
+    if (!res.alerts.length) return alertBox('warn', 'No alert was found in the available interaction data. This does not confirm the medication is safe; verify the full medication list with a pharmacist.');
     return res.alerts.map((a) => {
       const crit = a.severity === 'major' || a.severity === 'contraindicated';
       return alertBox(crit ? 'danger' : 'warn', `<b>${crit ? 'CRITICAL' : 'Warning'} · ${esc(a.type === 'allergy' ? 'Allergy' : a.type === 'duplicate' ? 'Duplicate therapy' : 'Drug interaction')} (${esc(a.severity)})</b><br>${esc(a.message)}`);
@@ -76,6 +76,7 @@
       <label>Duration<input name="duration" maxlength="60" value="${esc(f.duration || '')}"></label>
       <label>Indication<input name="indication" maxlength="120" value="${esc(f.indication || '')}"></label>
       ${f.needsOverride ? '<label>Override reason (required for critical alerts, min 10 characters)<textarea name="override" rows="3" required minlength="10" maxlength="300"></textarea></label>' : ''}
+      <p class="mut">Interaction data may be incomplete and may not provide severity ratings. Verify alerts with a pharmacist.</p>
       <p><button type="button" data-action="check">Check interactions &amp; allergies</button> <button class="primary" type="submit">${f.needsOverride ? 'Finalize despite critical alert' : 'Finalize'}</button></p></form>
       <div class="card"><h2>Current medications</h2>${medsTable(d.medications)}</div>`;
   }
@@ -100,7 +101,7 @@
     if (html) $app.innerHTML = html;
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
@@ -112,26 +113,34 @@
       const r = S.pharmSearchSecondary(d);
       $app.innerHTML = searchView(r.ok ? '' : r.error, r.ok ? r.results : null);
     } else if (k === 'prescribe') {
-      const r = S.pharmCreatePrescription(hrid, d, d.override || '');
+      const submit = form.querySelector('button[type="submit"]');
+      submit.disabled = true;
+      const r = await S.pharmCreatePrescription(hrid, d, d.override || '');
       if (r.ok) { toast(r.alerts && r.alerts.length ? 'Saved with alerts acknowledged' : 'Prescription saved'); location.hash = '#/patient/' + hrid + '/history'; }
       else $app.innerHTML = patientView(hrid, 'prescribe', r.error, Object.assign({}, d, { needsOverride: !!r.needsOverride, check: r.alerts ? { alerts: r.alerts } : null }));
     }
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-action]');
     if (!b) return;
     if (b.dataset.action === 'logout') { S.logout(); location.href = '/'; }
     else if (b.dataset.action === 'check') {
-      const form = b.closest('form'), r = S.pharmMedicationCheck(form.dataset.hrid, form.elements.name.value);
-      if (r.ok === false) { toast(r.error); return; }
-      form.querySelector('#alerts').innerHTML = alertsHtml(r);
+      const form = b.closest('form'), output = form.querySelector('#alerts');
+      b.disabled = true;
+      output.textContent = 'Checking available interaction data…';
+      const r = await S.pharmMedicationCheck(form.dataset.hrid, form.elements.name.value);
+      b.disabled = false;
+      if (r.ok === false) { output.innerHTML = alertBox('warn', esc(r.error)); return; }
+      output.innerHTML = alertsHtml(r);
     }
   });
-  document.addEventListener('change', (e) => {
+  document.addEventListener('change', async (e) => {
     if (e.target.name === 'name' && e.target.closest('form[data-form="prescribe"]') && e.target.value.trim()) {
-      const form = e.target.closest('form'), r = S.pharmMedicationCheck(form.dataset.hrid, e.target.value);
-      if (r && r.alerts) form.querySelector('#alerts').innerHTML = alertsHtml(r);
+      const form = e.target.closest('form'), output = form.querySelector('#alerts');
+      output.textContent = 'Checking available interaction data…';
+      const r = await S.pharmMedicationCheck(form.dataset.hrid, e.target.value);
+      output.innerHTML = r.ok ? alertsHtml(r) : alertBox('warn', esc(r.error));
     }
   });
 

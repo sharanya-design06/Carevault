@@ -20,9 +20,10 @@
     if (r.processingStatus === 'processing') return '<p>' + badge('processing') + ' A summary is being generated…</p>';
     const s = r.summary;
     if (!s) return '<p class="mut">No summary available.</p>';
-    return `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Your value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
+    return `<p>${esc(s.headline)}</p>${s.summaryText ? `<p>${esc(s.summaryText)}</p>` : ''}
+      ${s.findings.length ? `<table><thead><tr><th>Test</th><th>Your value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
       ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-      <p class="mut">Automatically generated demo summary. It is not medical advice; discuss results with your clinician.</p>`;
+      <p class="mut">Automated local summary/extraction (${esc(s.model || 'local fallback')}), not an AI diagnosis or medical advice. Confirm results with your clinician and the source report.</p>`;
   }
   function medsTable(rows) {
     if (!rows.length) return '<p class="mut">No medications recorded.</p>';
@@ -76,7 +77,7 @@
     return shell('reports', `<p><a href="#/reports">← Reports</a></p><h1>${esc(r.title)}</h1>
       <div class="card"><h2>Details</h2><p>${esc(r.category)} · ${esc(fmt(r.uploadedAt))} · ${esc(r.hospitalName)}</p><p>File: ${esc(r.fileName)} ${r.hasFile ? '' : '<span class="mut">(demo seed record, no file)</span>'}</p>
         ${r.hasFile ? `<button data-action="openPdf" data-id="${esc(r.id)}">Open PDF</button>` : ''}</div>
-      <div class="card"><h2>AI report summary</h2>${summaryBlock(r)}</div>`);
+      <div class="card"><h2>Automated report summary</h2>${summaryBlock(r)}</div>`);
   }
 
   function consentView(d, msg) {

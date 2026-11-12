@@ -70,7 +70,7 @@
     statins: ['statins', 'atorvastatin', 'simvastatin', 'rosuvastatin', 'pravastatin'],
   };
   const CROSS_REACTIVE = [['penicillins', 'cephalosporins']];
-  // [drugA, drugB, severity, message] – small demo table, not a substitute for a licensed drug database.
+  // Severity-labelled examples supplement the bundled source, which does not include severity ratings.
   const DRUG_INTERACTIONS = [
     ['warfarin', 'ibuprofen', 'major', 'Bleeding risk is significantly increased.'],
     ['warfarin', 'naproxen', 'major', 'Bleeding risk is significantly increased.'],
@@ -99,6 +99,58 @@
     ['eGFR', /\begfr\b/i, 'mL/min/1.73m²', 60, 200],
     ['Hemoglobin', /h(?:a)?emoglobin(?! ?a1c)/i, 'g/dL', 12, 17.5],
   ];
+  let drugInteractionIndexPromise = null;
+  const normalizeDrug = (value) => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().replace(/\s+/g, ' ');
+  const interactionKey = (a, b) => [normalizeDrug(a), normalizeDrug(b)].sort().join('\u0000');
+
+  function parseCsv(text) {
+    const rows = [], row = [];
+    let field = '', quoted = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (quoted) {
+        if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+        else if (ch === '"') quoted = false;
+        else field += ch;
+      } else if (ch === '"' && !field) quoted = true;
+      else if (ch === ',') { row.push(field); field = ''; }
+      else if (ch === '\n' || ch === '\r') {
+        if (ch === '\r' && text[i + 1] === '\n') i++;
+        row.push(field);
+        if (row.some((cell) => cell.trim())) rows.push(row.slice());
+        row.length = 0;
+        field = '';
+      } else field += ch;
+    }
+    if (field || row.length) { row.push(field); rows.push(row); }
+    return rows;
+  }
+
+  function loadDrugInteractionIndex() {
+    if (!drugInteractionIndexPromise) {
+      drugInteractionIndexPromise = (async () => {
+        const response = await fetch('/assets/data/drug-interactions.csv.gz');
+        if (!response.ok) throw new Error('Interaction data could not be loaded (' + response.status + ').');
+        if (typeof DecompressionStream !== 'function') throw new Error('This browser does not support local interaction-data decompression.');
+        const compressed = await response.arrayBuffer();
+        const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('gzip'));
+        const rows = parseCsv(await new Response(stream).text());
+        if (!rows.length || rows[0][0] !== 'Drug 1' || rows[0][1] !== 'Drug 2') throw new Error('The bundled interaction data has an unexpected format.');
+        const index = new Map();
+        rows.slice(1).forEach((row) => {
+          if (row.length < 3 || !row[0].trim() || !row[1].trim() || !row[2].trim()) return;
+          index.set(interactionKey(row[0], row[1]), row[2].trim());
+        });
+        if (!index.size) throw new Error('The bundled interaction data contains no usable entries.');
+        return index;
+      })().catch((error) => {
+        drugInteractionIndexPromise = null;
+        throw error;
+      });
+    }
+    return drugInteractionIndexPromise;
+  }
 
   const norm = (v) => String(v == null ? '' : v).trim().toLowerCase();
   const normHrid = (v) => String(v == null ? '' : v).trim().toUpperCase();
@@ -141,8 +193,25 @@
     return { ok: true, results };
   }
 
-  function drugAlerts(hrid, rawName) {
+  async function drugAlerts(hrid, rawName) {
     const n = norm(rawName), alerts = [], mine = classesOf(n);
+    const currentMeds = db.medications.filter((m) => m.hrid === hrid && m.status === 'current');
+    try {
+      const response = await fetch('/api/ai/v1/interactions/check', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          medication: String(rawName).trim(),
+          current_medications: currentMeds.map((m) => m.name),
+          allergies: db.allergies.filter((a) => a.hrid === hrid).map((a) => ({ name: a.name, reaction: a.reaction })),
+        }),
+      });
+      if (response.ok) return (await response.json()).alerts;
+      if (response.status !== 404 && response.status !== 405) console.warn('CareVault local AI interaction service:', response.status);
+    } catch (e) {
+      console.warn('CareVault local AI interaction service is unavailable; using the browser demo dataset:', e.message);
+    }
+    const interactionIndex = await loadDrugInteractionIndex();
     db.allergies.filter((a) => a.hrid === hrid).forEach((a) => {
       const an = norm(a.name), ac = classesOf(an);
       const same = an === n, sameClass = ac.some((c) => mine.includes(c));
@@ -151,12 +220,21 @@
       if (same || sameClass) alerts.push({ type: 'allergy', severity: 'major', message: 'Documented ' + a.name + ' allergy (' + reaction + '); ' + rawName + ' is ' + (same ? 'the same agent.' : 'in the same drug class.') });
       else if (cross) alerts.push({ type: 'allergy', severity: 'moderate', message: 'Documented ' + a.name + ' allergy (' + reaction + '); cross-reactivity with ' + rawName + ' is possible.' });
     });
-    db.medications.filter((m) => m.hrid === hrid && m.status === 'current').forEach((m) => {
+    const matchedPairs = new Set();
+    currentMeds.forEach((m) => {
       const cur = norm(m.name);
       if (cur === n) alerts.push({ type: 'duplicate', severity: 'moderate', message: m.name + ' is already a current medication (' + m.dose + ').' });
       DRUG_INTERACTIONS.forEach(([x, y, severity, message]) => {
-        if ((n.includes(x) && cur.includes(y)) || (n.includes(y) && cur.includes(x))) alerts.push({ type: 'interaction', severity, message: rawName + ' + ' + m.name + ': ' + message });
+        if ((normalizeDrug(n) === normalizeDrug(x) && normalizeDrug(cur) === normalizeDrug(y)) ||
+            (normalizeDrug(n) === normalizeDrug(y) && normalizeDrug(cur) === normalizeDrug(x))) {
+          alerts.push({ type: 'interaction', severity, message: rawName + ' + ' + m.name + ': ' + message });
+          matchedPairs.add(interactionKey(n, cur));
+        }
       });
+      const key = interactionKey(n, cur), description = interactionIndex.get(key);
+      if (description && !matchedPairs.has(key)) {
+        alerts.push({ type: 'interaction', severity: 'unknown', message: rawName + ' + ' + m.name + ': ' + description + ' The source does not provide a severity rating; have a pharmacist review this combination.' });
+      }
     });
     return alerts;
   }
@@ -164,15 +242,16 @@
   // Rule-based screening estimate from documented data; not a validated clinical model.
   function computeRisks(p, recs) {
     const age = ageOf(p.dob), c = p.clinical || {}, male = p.gender === 'Male';
-    const dx = (re) => recs.some((r) => r.type === 'diagnosis' && re.test((r.icd || '') + ' ' + r.title));
+    const dx = (re) => recs.some((r) => r.type === 'diagnosis' && r.dxStatus === 'confirmed' && re.test((r.icd || '') + ' ' + r.title));
     const DM = dx(/\bE1[01]|diabet/i), HTN = dx(/\bI1[0-5]|hypertens/i), CKD = dx(/\bN18|kidney|renal/i), CAD = dx(/\bI2[0-5]|coronary|myocard/i);
     const known = (v) => v !== undefined && v !== null && v !== '';
     const f = (label, max, earned, isKnown) => ({ label, max, earned: isKnown ? earned : 0, known: !!isKnown });
     const level = (score) => (score < 25 ? 'Low' : score < 50 ? 'Moderate' : 'High');
     const build = (condition, diagnosed, factors) => {
       const max = factors.reduce((t, x) => t + x.max, 0), got = factors.reduce((t, x) => t + x.earned, 0), kmax = factors.filter((x) => x.known).reduce((t, x) => t + x.max, 0);
-      const score = diagnosed ? 100 : Math.round(100 * got / max);
-      return { condition, score, level: diagnosed ? 'Diagnosed' : level(score), confidence: Math.round(40 + 60 * kmax / max), diagnosed, factors };
+      const confidence = Math.round(100 * kmax / max);
+      const score = diagnosed ? 100 : confidence >= 50 ? Math.round(100 * got / kmax) : null;
+      return { condition, score, level: diagnosed ? 'Diagnosed' : score === null ? 'Insufficient data' : level(score), confidence, diagnosed, factors };
     };
     return [
       build('Cardiovascular disease', CAD, [
@@ -193,12 +272,40 @@
     ];
   }
 
-  // Best-effort extraction of common lab values from PDF text; compressed or scanned PDFs yield no values.
-  function summarizeReport(buf) {
-    const text = new TextDecoder('latin1').decode(new Uint8Array(buf).subarray(0, 3 * 1024 * 1024));
+  async function summarizeReport(buf) {
+    const pdfjs = await import('/assets/vendor/pdfjs/pdf.min.mjs');
+    pdfjs.GlobalWorkerOptions.workerSrc = '/assets/vendor/pdfjs/pdf.worker.min.mjs';
+    const task = pdfjs.getDocument({ data: new Uint8Array(buf), isEvalSupported: false });
+    const pdf = await task.promise;
+    if (pdf.numPages > 200) {
+      await task.destroy();
+      throw new Error('This demo can process PDFs with up to 200 pages.');
+    }
+    const lines = [];
+    try {
+      for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+        const page = await pdf.getPage(pageNumber);
+        const content = await page.getTextContent();
+        const items = content.items.filter((item) => item.str && item.str.trim()).map((item, index) => ({
+          text: item.str, x: item.transform[4], y: item.transform[5], index,
+        })).sort((a, b) => b.y - a.y || a.x - b.x || a.index - b.index);
+        const pageLines = [];
+        items.forEach((item) => {
+          let line = pageLines[pageLines.length - 1];
+          if (!line || Math.abs(line.y - item.y) > 2) {
+            line = { y: item.y, items: [] };
+            pageLines.push(line);
+          }
+          line.items.push(item);
+        });
+        lines.push(...pageLines.map((line) => line.items.map((item) => item.text).join(' ')));
+      }
+    } finally {
+      await task.destroy();
+    }
     const findings = [];
     LAB_TESTS.forEach(([test, re, unit, lo, hi]) => {
-      const m = new RegExp('(?:' + re.source + ')[^0-9\\n\\r]{0,25}(\\d+(?:\\.\\d+)?)', 'i').exec(text);
+      const m = lines.map((line) => new RegExp('(?:' + re.source + ')[^0-9]{0,24}(\\d+(?:\\.\\d+)?)', 'i').exec(line)).find(Boolean);
       if (!m) return;
       const value = parseFloat(m[1]);
       findings.push({ test, value, unit, range: lo + '–' + hi, flag: value < lo ? 'low' : value > hi ? 'high' : 'normal' });
@@ -206,9 +313,9 @@
     const abnormal = findings.filter((x) => x.flag !== 'normal');
     return {
       headline: findings.length
-        ? findings.length + ' value(s) extracted automatically; ' + abnormal.length + ' outside the reference range' + (abnormal.length ? ': ' + abnormal.map((x) => x.test).join(', ') : '') + '.'
-        : 'No structured values could be extracted automatically (scanned or compressed PDF). Manual review of the PDF is required.',
-      findings, extracted: findings.length > 0, model: 'demo-heuristic-v0', generatedAt: now(),
+        ? 'Extracted ' + findings.length + ' common lab value(s) from ' + pdf.numPages + ' page(s); ' + abnormal.length + ' are outside the configured reference ranges' + (abnormal.length ? ': ' + abnormal.map((x) => x.test).join(', ') : '') + '.'
+        : 'No recognized lab values were found in the PDF text. Scanned images are not processed with OCR; manual review is required.',
+      findings, extracted: findings.length > 0, model: 'local-pdf-extractor-v1', generatedAt: now(),
     };
   }
 
@@ -233,8 +340,20 @@
     try {
       const buf = await idbGet(id);
       if (!buf) throw new Error('stored file not found');
-      await new Promise((res) => setTimeout(res, 1500));
-      r.summary = summarizeReport(buf); r.processingStatus = 'complete';
+      try {
+        const form = new FormData();
+        form.append('file', new Blob([buf], { type: 'application/pdf' }), r.fileName || 'report.pdf');
+        const response = await fetch('/api/ai/v1/summarize', { method: 'POST', body: form });
+        if (response.ok) r.summary = await response.json();
+        else {
+          if (response.status !== 404 && response.status !== 405) console.warn('CareVault local AI report service:', response.status);
+          r.summary = await summarizeReport(buf);
+        }
+      } catch (e) {
+        console.warn('CareVault local AI report service is unavailable; using browser PDF extraction:', e.message);
+        r.summary = await summarizeReport(buf);
+      }
+      r.processingStatus = 'complete';
     } catch (e) {
       r.processingStatus = 'failed'; r.summary = { headline: 'Processing failed: ' + e.message, findings: [], extracted: false };
     }
@@ -255,14 +374,17 @@
     return { ok: true, blob: new Blob([buf], { type: 'application/pdf' }), fileName: r.fileName };
   }
 
-  function createRx(s, hrid, order, overrideReason) {
+  async function createRx(s, hrid, order, overrideReason) {
     if (!s) return { ok: false, error: 'Not allowed.' };
     const a = clinicianAccess(s, hrid);
     if (!a) return { ok: false, error: 'Patient access is not permitted or has expired.' };
     const f = (k, max) => String(order[k] || '').trim().slice(0, max);
     const name = f('name', 80), dose = f('dose', 40), route = f('route', 30), frequency = f('frequency', 60), duration = f('duration', 60), indication = f('indication', 120);
     if (!name || !dose || !frequency) return { ok: false, error: 'Medication, dose and frequency are required.' };
-    const alerts = drugAlerts(a.patient.hrid, name), blocking = alerts.some((x) => SEVERE.includes(x.severity));
+    let alerts;
+    try { alerts = await drugAlerts(a.patient.hrid, name); }
+    catch (e) { return { ok: false, error: 'Interaction checking is unavailable, so the prescription was not saved. ' + e.message }; }
+    const blocking = alerts.some((x) => SEVERE.includes(x.severity));
     const reason = String(overrideReason || '').trim();
     if (blocking && reason.length < 10) return { ok: false, needsOverride: true, alerts, error: 'Serious safety alerts must be reviewed; enter an override reason (min 10 characters) to proceed.' };
     const instructions = [route, frequency, duration && 'for ' + duration, indication && '(' + indication + ')'].filter(Boolean).join(', ');
@@ -628,12 +750,14 @@
       log('clinical', 'success', 'Amendment added to record ' + orig.id + ' for ' + orig.hrid + (a.grant ? ' (emergency access)' : ''), s.email, s.hospitalId);
       return { ok: true };
     },
-    doctorMedicationCheck(hrid, name) {
+    async doctorMedicationCheck(hrid, name) {
       const s = role('doctor');
       if (!s || !clinicianAccess(s, hrid)) return { ok: false, error: 'Patient access is not permitted or has expired.', alerts: [] };
       if (!norm(name)) return { ok: false, error: 'Medication name is required.', alerts: [] };
-      const alerts = drugAlerts(normHrid(hrid), String(name).trim());
-      return { ok: true, alerts, blocking: alerts.some((x) => SEVERE.includes(x.severity)) };
+      try {
+        const alerts = await drugAlerts(normHrid(hrid), String(name).trim());
+        return { ok: true, alerts, blocking: alerts.some((x) => SEVERE.includes(x.severity)) };
+      } catch (e) { return { ok: false, error: 'Interaction checking is unavailable: ' + e.message, alerts: [] }; }
     },
     doctorCreatePrescription(hrid, order, overrideReason) { return createRx(role('doctor'), hrid, order, overrideReason); },
     pharmCreatePrescription(hrid, order, overrideReason) { return createRx(role('pharmacist'), hrid, order, overrideReason); },
@@ -704,12 +828,14 @@
         history: meds.filter((m) => m.status === 'current' || visibleItem(s, null, m)).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt)),
       };
     },
-    pharmMedicationCheck(hrid, name) {
+    async pharmMedicationCheck(hrid, name) {
       const s = role('pharmacist');
       if (!s || !clinicianAccess(s, hrid)) return { ok: false, error: 'Patient access is not permitted.', alerts: [] };
       if (!norm(name)) return { ok: false, error: 'Medication name is required.', alerts: [] };
-      const alerts = drugAlerts(normHrid(hrid), String(name).trim());
-      return { ok: true, alerts, blocking: alerts.some((x) => SEVERE.includes(x.severity)) };
+      try {
+        const alerts = await drugAlerts(normHrid(hrid), String(name).trim());
+        return { ok: true, alerts, blocking: alerts.some((x) => SEVERE.includes(x.severity)) };
+      } catch (e) { return { ok: false, error: 'Interaction checking is unavailable: ' + e.message, alerts: [] }; }
     },
     pharmRecentPatients() {
       const s = role('pharmacist');

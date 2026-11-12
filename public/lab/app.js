@@ -9,7 +9,7 @@
 
   function reportTable(rows) {
     if (!rows.length) return '<p class="mut">No reports.</p>';
-    return `<div class="tablewrap"><table><thead><tr><th>Title</th><th>Patient</th><th>Category</th><th>Uploaded</th><th>By</th><th>AI status</th><th></th></tr></thead><tbody>
+    return `<div class="tablewrap"><table><thead><tr><th>Title</th><th>Patient</th><th>Category</th><th>Uploaded</th><th>By</th><th>Extraction status</th><th></th></tr></thead><tbody>
       ${rows.map((r) => `<tr><td>${esc(r.title)}</td><td>${esc(r.patientName)}<br><code>${esc(r.hrid)}</code></td><td>${esc(r.category)}</td><td>${esc(fmt(r.uploadedAt))}</td><td>${esc(r.uploadedByName || r.uploadedBy)}</td><td>${badge(r.processingStatus)}</td>
       <td><a class="btn sm" href="#/reports/${esc(r.id)}">Details</a></td></tr>`).join('')}</tbody></table></div>`;
   }
@@ -18,7 +18,7 @@
     const mine = S.labReports('mine'), all = S.labReports('hospital');
     return shell('dashboard', `<h1>Laboratory Dashboard</h1>
       <div class="grid"><div class="stat"><b>${mine.length}</b><span>My uploads</span></div><div class="stat"><b>${all.length}</b><span>Hospital uploads</span></div>
-      <div class="stat"><b>${all.filter((r) => r.processingStatus === 'processing').length}</b><span>AI processing</span></div>
+      <div class="stat"><b>${all.filter((r) => r.processingStatus === 'processing').length}</b><span>Local extraction</span></div>
       <div class="stat"><b>${all.filter((r) => r.processingStatus === 'failed').length}</b><span>Processing failed</span></div></div>
       ${hridForm()}
       <div class="card"><h2>Recent uploads</h2>${reportTable(all.slice(0, 5))}</div>`);
@@ -45,8 +45,8 @@
     const f = S.labFindPatient(hrid);
     if (!f.ok) return shell('search', `<h1>Upload Medical Report</h1>${alertBox('danger', esc(f.error))}<p><a href="#/search">← Patient search</a></p>`);
     if (done) {
-      return shell('search', `<h1>Report uploaded</h1>${alertBox('ok', 'The PDF was stored and linked to ' + esc(f.patient.hrid) + '. AI processing has started.')}
-        <div class="actions"><a class="btn primary" href="#/reports/${esc(done)}">View report &amp; AI result</a><a class="btn" href="#/upload/${esc(hrid)}">Upload another</a></div>`);
+      return shell('search', `<h1>Report uploaded</h1>${alertBox('ok', 'The PDF was stored and linked to ' + esc(f.patient.hrid) + '. Local report extraction has started.')}
+        <div class="actions"><a class="btn primary" href="#/reports/${esc(done)}">View report summary</a><a class="btn" href="#/upload/${esc(hrid)}">Upload another</a></div>`);
     }
     return shell('search', `<h1>Upload Medical Report</h1>
       <div class="card"><b>${esc(f.patient.name)}</b> <code>${esc(f.patient.hrid)}</code> · DOB ${esc(f.patient.dob)}</div>
@@ -77,10 +77,11 @@
         <p>File: ${esc(r.fileName)} · ${r.size ? Math.round(r.size / 1024) + ' KB' : 'demo seed record'}</p>
         ${r.sha256 ? `<p>SHA-256: <code>${esc(r.sha256)}</code></p>` : ''}
         ${r.hasFile ? `<button data-action="openPdf" data-id="${esc(r.id)}">Open PDF</button>` : ''}</div>
-      <div class="card"><h2>AI processing result</h2><p>Status: ${badge(r.processingStatus)}${r.processedAt ? ' · ' + esc(fmt(r.processedAt)) : ''}</p>
-        ${s ? `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
+      <div class="card"><h2>Local report extraction result</h2><p>Status: ${badge(r.processingStatus)}${r.processedAt ? ' · ' + esc(fmt(r.processedAt)) : ''}</p>
+        ${s ? `<p>${esc(s.headline)}</p>${s.summaryText ? `<p>${esc(s.summaryText)}</p>` : ''}
+          ${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
           ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-          <p class="mut">AI-generated (${esc(s.model || 'demo')}), demo only — requires clinician review.</p>` : '<p class="mut">Processing…</p>'}</div>`);
+          <p class="mut">Automated local text extraction (${esc(s.model || 'demo')}); not an AI diagnosis. Confirm every value against the source PDF.</p>` : '<p class="mut">Processing…</p>'}</div>`);
   }
 
   async function render() {
