@@ -27,7 +27,7 @@ MANIFEST_PATH = DATA_PATH.with_name("brfss_2024_manifest.json")
 MODEL_DIR = Path(__file__).resolve().parent / "models"
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
-MINIMUM_RECALL = 0.5
+TARGET_PRECISION = 0.9
 TARGETS = {
     "diabetes": "diabetes",
     "heart_disease": "heart_disease",
@@ -93,6 +93,7 @@ def metrics_for(labels, scores, threshold, weights):
         "f1": round(float(f1_score(labels, predicted, sample_weight=weights, zero_division=0)), 4),
         "aucRoc": round(float(roc_auc_score(labels, scores, sample_weight=weights)), 4),
         "averagePrecision": round(float(average_precision_score(labels, scores, sample_weight=weights)), 4),
+        "predictedPositiveRows": int(predicted.sum()),
     }
 
 
@@ -103,40 +104,21 @@ def choose_threshold(labels, scores, weights):
     precision, recall, thresholds = precision_recall_curve(
         labels, scores, sample_weight=weights,
     )
-    positive_weight = np.sum(labels * weights)
-    total_weight = np.sum(weights)
-    true_positives = recall[:-1] * positive_weight
-    predicted_positive_weight = np.divide(
-        true_positives,
-        precision[:-1],
-        out=np.zeros_like(true_positives),
-        where=precision[:-1] > 0,
+    eligible = np.flatnonzero(
+        (precision[:-1] >= TARGET_PRECISION) & (recall[:-1] > 0)
     )
-    false_positives = predicted_positive_weight - true_positives
-    true_negatives = total_weight - positive_weight - false_positives
-    accuracy = (true_positives + true_negatives) / total_weight
-    f1 = np.divide(
-        2 * precision[:-1] * recall[:-1],
-        precision[:-1] + recall[:-1],
-        out=np.zeros_like(recall[:-1]),
-        where=(precision[:-1] + recall[:-1]) > 0,
-    )
-    eligible = []
-    for index, threshold in enumerate(thresholds):
-        if recall[index] >= MINIMUM_RECALL:
-            eligible.append((
-                float(accuracy[index]),
-                float(precision[index]),
-                float(f1[index]),
-                float(threshold),
-            ))
+    if not len(eligible):
+        return float(np.nextafter(scores.max(), np.inf)), False
 
-    baseline = metrics_for(labels, scores, 0.5, weights)
-    if baseline["recall"] >= MINIMUM_RECALL:
-        eligible.append((
-            baseline["accuracy"], baseline["precision"], baseline["f1"], 0.5,
-        ))
-    return max(eligible)[-1] if eligible else 0.5
+    best_index = max(
+        eligible,
+        key=lambda index: (
+            recall[index],
+            precision[index],
+            thresholds[index],
+        ),
+    )
+    return float(thresholds[best_index]), True
 
 
 def fit_with_weights(estimator, features, labels, weights):
@@ -169,7 +151,7 @@ def train_task(task, target, frame, source):
             estimator, fit[FEATURES], fit[target].astype(int), fit["_LLCPWT"].astype(float),
         )
         validation_scores = calibration_model.predict_proba(validation[FEATURES])[:, 1]
-        threshold = choose_threshold(
+        threshold, validation_target_met = choose_threshold(
             validation[target].astype(int).to_numpy(),
             validation_scores,
             validation["_LLCPWT"].astype(float).to_numpy(),
@@ -178,12 +160,17 @@ def train_task(task, target, frame, source):
             validation[target].astype(int).to_numpy(), validation_scores, threshold,
             validation["_LLCPWT"].astype(float).to_numpy(),
         )
-        benchmark[name] = {"threshold": round(float(threshold), 4), "validation": validation_metrics}
+        benchmark[name] = {
+            "threshold": threshold,
+            "validationTargetPrecisionMet": validation_target_met,
+            "validation": validation_metrics,
+        }
 
     selected_name = max(
         benchmark,
         key=lambda name: (
-            benchmark[name]["validation"]["accuracy"],
+            benchmark[name]["validationTargetPrecisionMet"],
+            benchmark[name]["validation"]["recall"],
             benchmark[name]["validation"]["precision"],
             benchmark[name]["validation"]["aucRoc"],
         ),
@@ -196,6 +183,10 @@ def train_task(task, target, frame, source):
         train["_LLCPWT"].astype(float),
     )
     test_scores = final_model.predict_proba(test[FEATURES])[:, 1]
+    holdout_metrics = metrics_for(
+        test[target].astype(int).to_numpy(), test_scores, threshold,
+        test["_LLCPWT"].astype(float).to_numpy(),
+    )
     result = {
         "task": task,
         "targetDefinition": source["targets"][task],
@@ -208,16 +199,15 @@ def train_task(task, target, frame, source):
         "split": "20% held-out states; model/threshold selection uses training states only",
         "selectedModel": selected_name,
         "threshold": threshold,
-        "minimumValidationRecall": MINIMUM_RECALL,
+        "targetPrecision": TARGET_PRECISION,
+        "validationTargetPrecisionMet": benchmark[selected_name]["validationTargetPrecisionMet"],
+        "holdoutTargetPrecisionMet": holdout_metrics["precision"] >= TARGET_PRECISION,
         "thresholdSelection": (
-            "Highest survey-weighted validation accuracy among thresholds with recall "
-            "at least 0.5; model selection also uses validation accuracy."
+            "Highest survey-weighted validation recall among thresholds with precision "
+            "at least 0.90; model selection prefers target attainment, then validation recall."
         ),
         "validationMetrics": benchmark[selected_name]["validation"],
-        "holdoutMetrics": metrics_for(
-            test[target].astype(int).to_numpy(), test_scores, threshold,
-            test["_LLCPWT"].astype(float).to_numpy(),
-        ),
+        "holdoutMetrics": holdout_metrics,
         "benchmark": benchmark,
         "features": FEATURES,
         "limitations": [

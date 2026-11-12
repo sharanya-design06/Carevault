@@ -113,16 +113,23 @@ class AiServiceTests(unittest.TestCase):
         self.assertEqual(result["PHYSHLTH"].iloc[0], 0)
         self.assertTrue(result["PHYSHLTH"].iloc[2:].isna().all())
 
-    def test_brfss_threshold_selection_respects_minimum_recall(self):
-        threshold = choose_threshold(
-            labels=[1] * 12 + [0] * 8,
-            scores=[
-                0.9, 0.4, 0.2, 0.8, 0.6, 0.7, 0.1, 0.3, 0.7, 0.8,
-                0.4, 0.8, 0.8, 0.4, 0.9, 0.3, 0.3, 0.7, 0.6, 0.2,
-            ],
-            weights=[1] * 20,
+    def test_brfss_threshold_selection_targets_precision(self):
+        threshold, target_met = choose_threshold(
+            labels=[1, 1, 0, 0, 0, 0],
+            scores=[0.95, 0.8, 0.7, 0.2, 0.1, 0.05],
+            weights=[1] * 6,
         )
-        self.assertAlmostEqual(threshold, 0.4)
+        self.assertTrue(target_met)
+        self.assertAlmostEqual(threshold, 0.8)
+
+    def test_brfss_threshold_makes_no_predictions_when_precision_target_is_unreachable(self):
+        threshold, target_met = choose_threshold(
+            labels=[0, 0, 1, 1],
+            scores=[0.99, 0.95, 0.8, 0.7],
+            weights=[1] * 4,
+        )
+        self.assertFalse(target_met)
+        self.assertGreater(threshold, 0.99)
 
 
 if __name__ == "__main__":
