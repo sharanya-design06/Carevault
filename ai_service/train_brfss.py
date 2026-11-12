@@ -32,7 +32,11 @@ TARGETS = {
     "diabetes": "diabetes",
     "heart_disease": "heart_disease",
 }
-CATEGORICAL_FEATURES = ["_AGEG5YR", "SEXVAR", "GENHLTH", "EXERANY2", "SMOKE100", "_INCOMG1", "_EDUCAG", "_RACEGR3"]
+CATEGORICAL_FEATURES = [
+    "_AGEG5YR", "SEXVAR", "GENHLTH", "EXERANY2", "SMOKE100", "_INCOMG1",
+    "_EDUCAG", "_RACEGR3", "CVDINFR4", "CVDSTRK3", "CHCKDNY2", "DIFFWALK",
+    "ASTHMA3", "HAVARTH4", "CHECKUP1",
+]
 NUMERIC_FEATURES = ["PHYSHLTH", "MENTHLTH", "_BMI5"]
 FEATURES = CATEGORICAL_FEATURES + NUMERIC_FEATURES
 
@@ -93,18 +97,45 @@ def metrics_for(labels, scores, threshold, weights):
 
 
 def choose_threshold(labels, scores, weights):
+    labels = np.asarray(labels)
+    scores = np.asarray(scores)
+    weights = np.asarray(weights)
     precision, recall, thresholds = precision_recall_curve(
         labels, scores, sample_weight=weights,
+    )
+    positive_weight = np.sum(labels * weights)
+    total_weight = np.sum(weights)
+    true_positives = recall[:-1] * positive_weight
+    predicted_positive_weight = np.divide(
+        true_positives,
+        precision[:-1],
+        out=np.zeros_like(true_positives),
+        where=precision[:-1] > 0,
+    )
+    false_positives = predicted_positive_weight - true_positives
+    true_negatives = total_weight - positive_weight - false_positives
+    accuracy = (true_positives + true_negatives) / total_weight
+    f1 = np.divide(
+        2 * precision[:-1] * recall[:-1],
+        precision[:-1] + recall[:-1],
+        out=np.zeros_like(recall[:-1]),
+        where=(precision[:-1] + recall[:-1]) > 0,
     )
     eligible = []
     for index, threshold in enumerate(thresholds):
         if recall[index] >= MINIMUM_RECALL:
-            f1 = 2 * precision[index] * recall[index] / (precision[index] + recall[index] or 1)
-            eligible.append((precision[index], f1, float(threshold)))
+            eligible.append((
+                float(accuracy[index]),
+                float(precision[index]),
+                float(f1[index]),
+                float(threshold),
+            ))
 
     baseline = metrics_for(labels, scores, 0.5, weights)
     if baseline["recall"] >= MINIMUM_RECALL:
-        eligible.append((baseline["precision"], baseline["f1"], 0.5))
+        eligible.append((
+            baseline["accuracy"], baseline["precision"], baseline["f1"], 0.5,
+        ))
     return max(eligible)[-1] if eligible else 0.5
 
 
@@ -152,8 +183,8 @@ def train_task(task, target, frame, source):
     selected_name = max(
         benchmark,
         key=lambda name: (
+            benchmark[name]["validation"]["accuracy"],
             benchmark[name]["validation"]["precision"],
-            benchmark[name]["validation"]["recall"],
             benchmark[name]["validation"]["aucRoc"],
         ),
     )
@@ -178,6 +209,10 @@ def train_task(task, target, frame, source):
         "selectedModel": selected_name,
         "threshold": threshold,
         "minimumValidationRecall": MINIMUM_RECALL,
+        "thresholdSelection": (
+            "Highest survey-weighted validation accuracy among thresholds with recall "
+            "at least 0.5; model selection also uses validation accuracy."
+        ),
         "validationMetrics": benchmark[selected_name]["validation"],
         "holdoutMetrics": metrics_for(
             test[target].astype(int).to_numpy(), test_scores, threshold,
@@ -187,8 +222,10 @@ def train_task(task, target, frame, source):
         "features": FEATURES,
         "limitations": [
             "The target is a respondent's self-reported prior diagnosis, not incident disease or a clinical diagnosis.",
+            "Some features are respondents' recalled prior comorbid diagnoses; this is not future-risk prediction.",
             "Survey weights are used, but this training script does not fully model BRFSS strata and primary sampling units.",
             "One year and a geographic holdout do not establish clinical transportability.",
+            "The same geographic split was reused during model iterations; results need confirmation on a new external cohort.",
             "This model is an exploratory benchmark and is not exposed as a CareVault patient prediction endpoint.",
         ],
     }

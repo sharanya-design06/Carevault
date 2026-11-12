@@ -118,28 +118,33 @@ An optional research benchmark uses the openly downloadable CDC 2024 BRFSS surve
 `python -m ai_service.train_brfss` to train and evaluate self-reported diabetes and heart-disease classification
 models using held-out states. Raw and processed survey files and model artifacts are ignored by Git. These models
 classify respondents' self-reported prior diagnoses; they do not predict future disease, are not clinical models,
-and are deliberately not connected to CareVault's patient prediction endpoint. The evaluation uses survey weights
-but does not fully model BRFSS's complex sampling design, so results are exploratory only.
+and are deliberately not connected to CareVault's patient prediction endpoint. Predictors now include demographics,
+health measures, and self-reported history of heart attack, stroke, kidney disease, arthritis, asthma, walking
+difficulty, and checkup recency. Threshold and model selection maximize survey-weighted validation accuracy while
+requiring at least 50% validation recall. The evaluation uses survey weights but does not fully model BRFSS's complex
+sampling design, and the same geographic holdout was reused during these model iterations, so results are exploratory
+and need confirmation on an untouched external cohort.
 
-Latest local benchmark run (fixed stratified 20% holdout; selected threshold and model chosen using training data only):
+Latest local benchmark run (prior prototype datasets use fixed stratified holdouts; BRFSS uses the same fixed
+geographic holdout; thresholds and models are selected using training/validation data only):
 
 | Dataset/task | Selected model | Holdout accuracy | Precision | Recall | F1 | ROC-AUC |
 |---|---|---:|---:|---:|---:|---:|
 | Diabetes (154 test rows) | Logistic Regression | 0.7273 | 0.6579 | 0.4630 | 0.5435 | 0.8126 |
 | Heart disease (61 test rows) | Logistic Regression | 0.7705 | 0.8800 | 0.6667 | 0.7586 | 0.8712 |
 | Liver disease (117 test rows) | XGBoost | 0.6496 | 0.9038 | 0.5663 | 0.6963 | 0.7743 |
-| BRFSS diabetes (11 held-out states; 118,303 rows) | XGBoost | 0.8372 | 0.3888 | 0.4898 | 0.4335 | 0.8238 |
-| BRFSS heart disease (11 held-out states; 121,016 rows) | XGBoost | 0.8938 | 0.2167 | 0.4950 | 0.3014 | 0.8541 |
+| BRFSS diabetes (survey-weighted; 11 held-out states; 118,303 rows) | XGBoost | 0.8511 | 0.4248 | 0.4843 | 0.4526 | 0.8384 |
+| BRFSS heart disease (survey-weighted; 11 held-out states; 121,016 rows) | XGBoost | 0.9487 | 0.4536 | 0.5275 | 0.4878 | 0.9084 |
 | Report summaries (974 grouped test examples) | TF-IDF extractive | — | — | — | ROUGE-1: 0.2908; ROUGE-2: 0.2202; ROUGE-L: 0.2657 | — |
 
 These are reproducible prototype baselines, not evidence of high or clinically safe accuracy. In particular, diabetes
 holdout precision is only 0.6579 and its recall is 0.4630; the summary scores are modest and use dataset descriptions
 as weak references. The holdout samples are small and from the same source datasets, so real-world performance may be
 lower. Drug-interaction data has no reliable labeled severity/ground-truth set here, so accuracy/precision cannot be
-validly measured. The BRFSS heart-disease accuracy is inflated by class imbalance while its precision is only 0.2167;
-the BRFSS results classify self-reported prior diagnoses and are not estimates of future disease prediction. These
-results do not meet the requested 90% accuracy and 95% precision together. Do not use any of these results to make
-care decisions.
+validly measured. BRFSS heart-disease accuracy exceeds 90%, but its precision is only 0.4536; diabetes accuracy is
+0.8511. Both BRFSS results classify self-reported prior diagnoses, not future disease. Neither reaches the requested
+90% accuracy and 95% precision together, and repeated use of the same state holdout means the figures require new,
+independent validation. Do not use any of these results to make care decisions.
 
 ## Optional local Python AI prototype
 

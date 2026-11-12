@@ -89,6 +89,13 @@ class AiServiceTests(unittest.TestCase):
             "_INCOMG1": [5, 11, 99, 2],
             "_EDUCAG": [3, 2, 9, 1],
             "_RACEGR3": [1, 2, 9, 8],
+            "CVDINFR4": [1, 2, 7, 9],
+            "CVDSTRK3": [2, 1, 7, 9],
+            "CHCKDNY2": [1, 2, 7, 9],
+            "DIFFWALK": [2, 1, 7, 9],
+            "ASTHMA3": [1, 2, 7, 9],
+            "HAVARTH4": [2, 1, 7, 9],
+            "CHECKUP1": [1, 8, 7, 9],
             "DIABETE4": [1, 3, 2, 4],
             "CVDCRHD4": [1, 2, 7, 9],
             "_LLCPWT": [1.0, 2.0, 3.0, 4.0],
@@ -99,16 +106,23 @@ class AiServiceTests(unittest.TestCase):
         self.assertEqual(result["heart_disease"].iloc[:2].tolist(), [1, 0])
         self.assertTrue(result["diabetes"].iloc[2:].isna().all())
         self.assertEqual(result["_BMI5"].iloc[0], 24.5)
+        self.assertEqual(result["CVDINFR4"].iloc[:2].tolist(), [1, 2])
+        self.assertTrue(result["CVDINFR4"].iloc[2:].isna().all())
+        self.assertEqual(result["CHECKUP1"].iloc[:2].tolist(), [1, 8])
+        self.assertTrue(result["CHECKUP1"].iloc[2:].isna().all())
         self.assertEqual(result["PHYSHLTH"].iloc[0], 0)
         self.assertTrue(result["PHYSHLTH"].iloc[2:].isna().all())
 
     def test_brfss_threshold_selection_respects_minimum_recall(self):
         threshold = choose_threshold(
-            labels=[1, 1, 1, 0, 0, 0],
-            scores=[0.9, 0.8, 0.4, 0.7, 0.3, 0.2],
-            weights=[1, 1, 1, 1, 1, 1],
+            labels=[1] * 12 + [0] * 8,
+            scores=[
+                0.9, 0.4, 0.2, 0.8, 0.6, 0.7, 0.1, 0.3, 0.7, 0.8,
+                0.4, 0.8, 0.8, 0.4, 0.9, 0.3, 0.3, 0.7, 0.6, 0.2,
+            ],
+            weights=[1] * 20,
         )
-        self.assertAlmostEqual(threshold, 0.8)
+        self.assertAlmostEqual(threshold, 0.4)
 
 
 if __name__ == "__main__":

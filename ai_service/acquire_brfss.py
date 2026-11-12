@@ -4,7 +4,6 @@ import urllib.request
 import zipfile
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
@@ -19,6 +18,11 @@ TARGETS = {"diabetes": "DIABETE4", "heart_disease": "CVDCRHD4"}
 FEATURES = [
     "_AGEG5YR", "SEXVAR", "GENHLTH", "PHYSHLTH", "MENTHLTH",
     "EXERANY2", "SMOKE100", "_BMI5", "_INCOMG1", "_EDUCAG", "_RACEGR3",
+    "CVDINFR4", "CVDSTRK3", "CHCKDNY2", "DIFFWALK", "ASTHMA3",
+    "HAVARTH4", "CHECKUP1",
+]
+YES_NO_FEATURES = [
+    "CVDINFR4", "CVDSTRK3", "CHCKDNY2", "DIFFWALK", "ASTHMA3", "HAVARTH4",
 ]
 REQUIRED_COLUMNS = set(FEATURES + list(TARGETS.values()) + ["_LLCPWT", "_STATE"])
 
@@ -53,6 +57,11 @@ def normalize_chunk(frame):
     frame["_INCOMG1"] = frame["_INCOMG1"].where(frame["_INCOMG1"].between(1, 11))
     frame["_EDUCAG"] = frame["_EDUCAG"].where(frame["_EDUCAG"].between(1, 4))
     frame["_RACEGR3"] = frame["_RACEGR3"].where(frame["_RACEGR3"].between(1, 8))
+    for column in YES_NO_FEATURES:
+        frame[column] = frame[column].where(frame[column].isin([1, 2]))
+    frame["CHECKUP1"] = frame["CHECKUP1"].where(
+        frame["CHECKUP1"].isin([1, 2, 3, 4, 8]),
+    )
     frame["_LLCPWT"] = frame["_LLCPWT"].where(frame["_LLCPWT"] > 0)
     frame["_STATE"] = frame["_STATE"].where(frame["_STATE"] > 0)
 
