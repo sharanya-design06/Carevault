@@ -146,11 +146,14 @@ def train_task(task, target, frame, source):
     validation = train.iloc[validation_idx]
 
     benchmark = {}
+    validation_models = {}
+    holdout_labels = test[target].astype(int).to_numpy()
+    holdout_weights = test["_LLCPWT"].astype(float).to_numpy()
     for name, estimator in build_estimators().items():
-        calibration_model = fit_with_weights(
+        validation_model = fit_with_weights(
             estimator, fit[FEATURES], fit[target].astype(int), fit["_LLCPWT"].astype(float),
         )
-        validation_scores = calibration_model.predict_proba(validation[FEATURES])[:, 1]
+        validation_scores = validation_model.predict_proba(validation[FEATURES])[:, 1]
         threshold, validation_target_met = choose_threshold(
             validation[target].astype(int).to_numpy(),
             validation_scores,
@@ -160,11 +163,18 @@ def train_task(task, target, frame, source):
             validation[target].astype(int).to_numpy(), validation_scores, threshold,
             validation["_LLCPWT"].astype(float).to_numpy(),
         )
+        holdout_scores = validation_model.predict_proba(test[FEATURES])[:, 1]
+        holdout_metrics = metrics_for(
+            holdout_labels, holdout_scores, threshold, holdout_weights,
+        )
         benchmark[name] = {
             "threshold": threshold,
             "validationTargetPrecisionMet": validation_target_met,
             "validation": validation_metrics,
+            "holdout": holdout_metrics,
+            "holdoutTargetPrecisionMet": holdout_metrics["precision"] >= TARGET_PRECISION,
         }
+        validation_models[name] = validation_model
 
     selected_name = max(
         benchmark,
@@ -176,16 +186,10 @@ def train_task(task, target, frame, source):
         ),
     )
     threshold = benchmark[selected_name]["threshold"]
-    final_model = fit_with_weights(
-        build_estimators()[selected_name],
-        train[FEATURES],
-        train[target].astype(int),
-        train["_LLCPWT"].astype(float),
-    )
-    test_scores = final_model.predict_proba(test[FEATURES])[:, 1]
+    selected_model = validation_models[selected_name]
+    test_scores = selected_model.predict_proba(test[FEATURES])[:, 1]
     holdout_metrics = metrics_for(
-        test[target].astype(int).to_numpy(), test_scores, threshold,
-        test["_LLCPWT"].astype(float).to_numpy(),
+        holdout_labels, test_scores, threshold, holdout_weights,
     )
     result = {
         "task": task,
@@ -195,8 +199,13 @@ def train_task(task, target, frame, source):
         "rows": int(len(subset)),
         "positiveRows": int(labels.sum()),
         "trainingStates": sorted(train["_STATE"].astype(int).unique().tolist()),
+        "modelFitStates": sorted(fit["_STATE"].astype(int).unique().tolist()),
+        "thresholdSelectionStates": sorted(validation["_STATE"].astype(int).unique().tolist()),
         "testStates": sorted(test["_STATE"].astype(int).unique().tolist()),
-        "split": "20% held-out states; model/threshold selection uses training states only",
+        "split": (
+            "20% held-out states; model fitting and threshold selection use separate "
+            "states from the remaining 80%"
+        ),
         "selectedModel": selected_name,
         "threshold": threshold,
         "targetPrecision": TARGET_PRECISION,
@@ -219,7 +228,7 @@ def train_task(task, target, frame, source):
             "This model is an exploratory benchmark and is not exposed as a CareVault patient prediction endpoint.",
         ],
     }
-    joblib.dump({"model": final_model, **result}, MODEL_DIR / f"brfss_2024_{task}.joblib")
+    joblib.dump({"model": selected_model, **result}, MODEL_DIR / f"brfss_2024_{task}.joblib")
     return result
 
 

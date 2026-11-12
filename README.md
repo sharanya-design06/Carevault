@@ -123,9 +123,10 @@ health measures, and self-reported history of heart attack, stroke, kidney disea
 difficulty, and checkup recency. The high-precision mode selects the model and threshold using validation states,
 maximizing validation recall subject to at least 90% survey-weighted validation precision. This is only a target for
 threshold selection: on held-out states, neither model retained 90% precision, and both detected very few positive
-cases. The evaluation uses survey weights but does not fully model BRFSS's complex sampling design, and the same
-geographic holdout was reused during these model iterations, so results are exploratory and need confirmation on an
-untouched external cohort.
+cases. Candidate models' holdout results are reported at their validation-selected thresholds; they are not used to
+choose the model or threshold. The evaluation uses survey weights but does not fully model BRFSS's complex sampling
+design, and the same geographic holdout was reused during these model iterations, so results are exploratory and need
+confirmation on an untouched external cohort.
 
 Latest local benchmark run (prior prototype datasets use fixed stratified holdouts; BRFSS uses the same fixed
 geographic holdout; thresholds and models are selected using training/validation data only):
@@ -135,20 +136,22 @@ geographic holdout; thresholds and models are selected using training/validation
 | Diabetes (154 test rows) | Logistic Regression | 0.7273 | 0.6579 | 0.4630 | 0.5435 | 0.8126 |
 | Heart disease (61 test rows) | Logistic Regression | 0.7705 | 0.8800 | 0.6667 | 0.7586 | 0.8712 |
 | Liver disease (117 test rows) | XGBoost | 0.6496 | 0.9038 | 0.5663 | 0.6963 | 0.7743 |
-| BRFSS diabetes (90%-precision validation target; 11 held-out states) | XGBoost | 0.8729 | 0.5743 | 0.0008 | 0.0017 | 0.8384 |
-| BRFSS heart disease (90%-precision validation target; 11 held-out states) | Logistic Regression | 0.9541 | 0.7831 | 0.0129 | 0.0253 | 0.9059 |
+| BRFSS diabetes (90%-precision validation target; 11 held-out states; 17 positive predictions) | XGBoost | 0.8729 | 0.6591 | 0.0008 | 0.0017 | 0.8377 |
+| BRFSS heart disease (90%-precision validation target; 11 held-out states; 226 positive predictions) | Logistic Regression | 0.9543 | 0.7596 | 0.0185 | 0.0361 | 0.9054 |
 | Report summaries (974 grouped test examples) | TF-IDF extractive | — | — | — | ROUGE-1: 0.2908; ROUGE-2: 0.2202; ROUGE-L: 0.2657 | — |
 
 These are reproducible prototype baselines, not evidence of high or clinically safe accuracy. In particular, diabetes
 holdout precision is only 0.6579 and its recall is 0.4630; the summary scores are modest and use dataset descriptions
 as weak references. The holdout samples are small and from the same source datasets, so real-world performance may be
 lower. Drug-interaction data has no reliable labeled severity/ground-truth set here, so accuracy/precision cannot be
-validly measured. The BRFSS high-precision thresholds were chosen on validation states and met the 90% precision
-target there (diabetes: 98.30% precision at 0.10% recall; heart disease: 90.21% precision at 2.17% recall). On the
-held-out states, precision fell to 57.43% and 78.31%, respectively, while recall was only 0.08% and 1.29%. Thus,
-the 90% target did not generalize; the high-precision mode is not reliable and misses nearly all positive cases.
-Both BRFSS results classify self-reported prior diagnoses, not future disease. Repeated use of the same state holdout
-means the figures require new, independent validation. Do not use any of these results to make care decisions.
+validly measured. The BRFSS high-precision thresholds met 90% validation precision (diabetes: 98.30% at 0.10%
+recall; heart disease: 90.21% at 2.17% recall) but did not generalize to held-out states. The selected models'
+held-out precision was 65.91% for diabetes and 75.96% for heart disease, at recall of 0.08% and 1.85%. Other
+validation-selected candidates also failed the target on holdout; a 100% diabetes precision result from one candidate
+was based on a single positive prediction and is not reliable evidence. Neither task has demonstrated dependable
+90% precision. Both BRFSS results classify self-reported prior diagnoses, not future disease. Repeated use of the
+same state holdout means the figures require new, independent validation. Do not use any of these results to make
+care decisions.
 
 ## Optional local Python AI prototype
 
