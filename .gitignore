@@ -4,6 +4,8 @@ public/assets/data/drug-interactions.csv.gz
 public/assets/vendor/pdfjs/
 ai_service/.venv/
 ai_service/models/
+ai_service/data/raw/
+ai_service/data/processed/
 __pycache__/
 *.py[cod]
 .pytest_cache/

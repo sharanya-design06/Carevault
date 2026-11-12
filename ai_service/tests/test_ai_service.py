@@ -1,9 +1,12 @@
 import unittest
 
 from fastapi import HTTPException
+import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 from ai_service import app as service
+from ai_service.acquire_brfss import normalize_chunk
+from ai_service.train_brfss import choose_threshold
 from ai_service.train_models import TASKS, prepare_data
 from ai_service.train_summarizer import extractive_summary
 
@@ -72,6 +75,40 @@ class AiServiceTests(unittest.TestCase):
         summary = extractive_summary(text, vectorizer)
         for sentence in summary.split(". "):
             self.assertIn(sentence.strip(), text)
+
+    def test_brfss_target_mapping_excludes_unknown_and_gestational_codes(self):
+        frame = pd.DataFrame({
+            "_AGEG5YR": [5, 6, 7, 8],
+            "SEXVAR": [1, 2, 1, 2],
+            "GENHLTH": [2, 3, 4, 5],
+            "PHYSHLTH": [88, 4, 77, 99],
+            "MENTHLTH": [2, 88, 77, 99],
+            "EXERANY2": [1, 2, 1, 9],
+            "SMOKE100": [2, 1, 2, 7],
+            "_BMI5": [2450, 9999, 1800, 3000],
+            "_INCOMG1": [5, 11, 99, 2],
+            "_EDUCAG": [3, 2, 9, 1],
+            "_RACEGR3": [1, 2, 9, 8],
+            "DIABETE4": [1, 3, 2, 4],
+            "CVDCRHD4": [1, 2, 7, 9],
+            "_LLCPWT": [1.0, 2.0, 3.0, 4.0],
+            "_STATE": [1, 2, 3, 4],
+        })
+        result = normalize_chunk(frame)
+        self.assertEqual(result["diabetes"].iloc[:2].tolist(), [1, 0])
+        self.assertEqual(result["heart_disease"].iloc[:2].tolist(), [1, 0])
+        self.assertTrue(result["diabetes"].iloc[2:].isna().all())
+        self.assertEqual(result["_BMI5"].iloc[0], 24.5)
+        self.assertEqual(result["PHYSHLTH"].iloc[0], 0)
+        self.assertTrue(result["PHYSHLTH"].iloc[2:].isna().all())
+
+    def test_brfss_threshold_selection_respects_minimum_recall(self):
+        threshold = choose_threshold(
+            labels=[1, 1, 1, 0, 0, 0],
+            scores=[0.9, 0.8, 0.4, 0.7, 0.3, 0.2],
+            weights=[1, 1, 1, 1, 1, 1],
+        )
+        self.assertAlmostEqual(threshold, 0.8)
 
 
 if __name__ == "__main__":
