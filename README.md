@@ -156,6 +156,21 @@ was based on a single positive prediction and is not reliable evidence. Neither 
 same state holdout means the figures require new, independent validation. Do not use any of these results to make
 care decisions.
 
+For a separate accuracy/precision-focused research experiment on the repository's diabetes, cardiac, and liver datasets,
+run `python -m ai_service.train_precision_models`. It reserves 20% for testing and selects thresholds and models using
+five-fold out-of-fold predictions on the remaining training data. It maximizes recall subject to both accuracy and
+precision strictly above 90% and at least 10 positive validation predictions. It evaluates only the selected model
+on the test split and saves separate
+`precision_research_*.joblib` artifacts and `precision-research-report.json` under `ai_service\models`. An artifact
+contains no model when no candidate meets the validation target. These artifacts are not used by the website or its
+prediction endpoint. The test split has been reused in prior development and is not an independent external cohort;
+validation metrics are optimistic because the same predictions select the model and threshold, and are not guarantees
+of test performance. Check recall and positive prediction counts as well as precision. These results remain
+research-only and must not inform clinical care.
+
+Latest accuracy/precision-focused run: no diabetes, cardiac, or liver candidate met both targets on the
+out-of-fold training predictions, so none was selected or evaluated on the test split.
+
 ## Optional local Python AI prototype
 
 The Python service is intended only for local development. It serves the static app and its `/api/ai/` endpoints from

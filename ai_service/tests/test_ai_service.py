@@ -8,6 +8,7 @@ from ai_service import app as service
 from ai_service.acquire_brfss import normalize_chunk
 from ai_service.train_brfss import choose_threshold
 from ai_service.train_models import TASKS, prepare_data
+from ai_service.train_precision_models import evaluate, select_threshold
 from ai_service.train_summarizer import extractive_summary
 
 
@@ -149,6 +150,22 @@ class AiServiceTests(unittest.TestCase):
         )
         self.assertFalse(target_met)
         self.assertGreater(threshold, 0.99)
+
+    def test_precision_threshold_requires_strict_target_and_sufficient_predictions(self):
+        labels = [1] * 9 + [0] + [1]
+        scores = [1 - index * 0.01 for index in range(11)]
+        self.assertAlmostEqual(select_threshold(labels, scores), 0.9)
+        self.assertIsNone(select_threshold(labels[:10], scores[:10]))
+
+    def test_precision_threshold_also_requires_accuracy_over_target(self):
+        labels = [1] * 10 + [0] * 10 + [1] * 10
+        scores = [0.9] * 10 + [0.2] * 20
+        self.assertIsNone(select_threshold(labels, scores))
+
+    def test_precision_is_undefined_when_no_test_predictions_are_positive(self):
+        result = evaluate([0, 1], [0.2, 0.3], 0.9)
+        self.assertIsNone(result["precision"])
+        self.assertEqual(result["predictedPositiveRows"], 0)
 
 
 if __name__ == "__main__":
