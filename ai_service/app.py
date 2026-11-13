@@ -26,6 +26,7 @@ MAX_PDF_PAGES = 200
 MODEL_DIR = Path(os.environ.get("CAREVAULT_MODEL_DIR", ROOT / "ai_service" / "models"))
 INTERACTION_CSV = Path(os.environ.get("CAREVAULT_INTERACTION_CSV", ROOT / "db_drug_interactions.csv"))
 summarizer_vectorizer = None
+transformer_summarizer = None
 SEVERITY_EXAMPLES = {
     ("warfarin", "ibuprofen"): ("major", "Bleeding risk is significantly increased."),
     ("warfarin", "naproxen"): ("major", "Bleeding risk is significantly increased."),
@@ -178,18 +179,26 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
         )
     if not highlights:
         highlights = ["No matching conclusion or findings text was detected."]
-    summary_text = extractive_summary(text, summarizer_vectorizer) if summarizer_vectorizer else ""
+    if transformer_summarizer:
+        summary_text = transformer_summarizer.summarize(text)
+        summary_model = "local-biobert-t5-finetuned-v1"
+    elif summarizer_vectorizer:
+        summary_text = extractive_summary(text, summarizer_vectorizer)
+        summary_model = "local-tfidf-extractive-v1"
+    else:
+        summary_text = ""
+        summary_model = "local-structured-extraction-v1"
     return {
         "headline": headline,
         "summaryText": summary_text,
         "findings": findings,
         "highlights": highlights,
         "extracted": bool(findings or highlights[0] != "No matching conclusion or findings text was detected."),
-        "model": "local-tfidf-extractive-v1" if summarizer_vectorizer else "local-structured-extraction-v1",
+        "model": summary_model,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "pageCount": page_count,
         "limitations": [
-            "This is deterministic text extraction, not a fine-tuned BioBERT/T5 summary.",
+            "Automated summaries are research-only and may omit or misstate clinical details; review the source report.",
             "Scanned image OCR and disease diagnosis are not supported.",
             "Configured reference ranges may not match the laboratory's own ranges.",
         ],
@@ -264,10 +273,18 @@ def load_model(condition: str) -> dict[str, Any]:
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    global summarizer_vectorizer
+    global summarizer_vectorizer, transformer_summarizer
     load_interactions()
+    transformer_path = MODEL_DIR / "biobert_t5_summarizer"
+    if transformer_path.is_dir():
+        try:
+            from ai_service.transformer_summarizer import load_biobert_t5_summarizer
+
+            transformer_summarizer = load_biobert_t5_summarizer(transformer_path)
+        except (ImportError, OSError, ValueError, RuntimeError) as error:
+            raise RuntimeError("The local BioBERT/T5 summarizer could not be loaded.") from error
     summarizer_path = MODEL_DIR / "summarizer.joblib"
-    if summarizer_path.is_file():
+    if summarizer_path.is_file() and transformer_summarizer is None:
         try:
             summarizer_vectorizer = joblib.load(summarizer_path)["vectorizer"]
         except (OSError, ValueError, EOFError, KeyError) as error:
@@ -308,8 +325,12 @@ def health():
             for condition in ("diabetes", "cardiac", "liver")
         },
         "hypertensionModel": False,
-        "summaryModel": summarizer_vectorizer is not None,
-        "summaryMode": "local-tfidf-extractive" if summarizer_vectorizer else "local-structured-extraction",
+        "summaryModel": transformer_summarizer is not None or summarizer_vectorizer is not None,
+        "summaryMode": (
+            "local-biobert-t5-finetuned" if transformer_summarizer
+            else "local-tfidf-extractive" if summarizer_vectorizer
+            else "local-structured-extraction"
+        ),
         "clinicalValidation": False,
     }
 

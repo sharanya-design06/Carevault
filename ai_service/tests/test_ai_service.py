@@ -28,6 +28,25 @@ class AiServiceTests(unittest.TestCase):
         self.assertEqual(values["Fasting glucose"], 132)
         self.assertEqual(result["model"], "local-structured-extraction-v1")
 
+    def test_prefers_local_biobert_t5_summary_when_available(self):
+        original_summarizer, original_vectorizer = (
+            service.transformer_summarizer, service.summarizer_vectorizer,
+        )
+        try:
+            class StubSummarizer:
+                def summarize(self, text):
+                    return "Generated local summary."
+
+            service.transformer_summarizer = StubSummarizer()
+            service.summarizer_vectorizer = None
+            result = service.summarize_text("A clinical report sentence.", 1)
+            self.assertEqual(result["summaryText"], "Generated local summary.")
+            self.assertEqual(result["model"], "local-biobert-t5-finetuned-v1")
+            self.assertTrue(any("research-only" in item for item in result["limitations"]))
+        finally:
+            service.transformer_summarizer = original_summarizer
+            service.summarizer_vectorizer = original_vectorizer
+
     def test_interactions_report_unknown_source_severity(self):
         original_index, original_error = service.interaction_index, service.interaction_error
         try:

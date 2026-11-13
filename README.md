@@ -92,10 +92,13 @@ Emergency Access History, Consent Management (cross-hospital sharing is enforced
 notification preference is stored only), Account Settings and Change Password. Patients get an account when PCC
 registers them with an email (invitation link) and sign in on the same login page.
 
-AI caveats: report summaries extract selectable PDF text and common lab values. The optional extractive TF-IDF
-summarizer is fit on the repository's `mtsamples.csv` transcriptions; its `description` field is only a weak
-reference for held-out ROUGE evaluation, not a clinician-reviewed summary. It does not interpret scans and is not
-fine-tuned BioBERT/T5. Drug checks are a rule-based lookup using the bundled interaction dataset plus a few
+AI caveats: report summaries extract selectable PDF text and common lab values. An optional local BioBERT/T5
+summarizer can be fine-tuned on the repository's `mtsamples.csv` transcriptions; its `description` field is only a
+weak, non-clinician-reviewed reference. BioBERT ranks report sentences for context and fine-tuned Flan-T5 generates
+a summary. The model requires optional dependencies and locally saved weights; absent that model, the service uses
+the existing extractive TF-IDF or structured-extraction fallback. ROUGE evaluation does not establish clinical
+correctness, and summaries may omit or misstate details. It does not interpret scans. Drug checks are a rule-based
+lookup using the bundled interaction dataset plus a few
 severity-labelled examples; dataset provenance/licensing is unverified, most source rows have no severity, coverage
 is incomplete, and no alert does not mean a combination is safe. The training pipeline compares Logistic Regression,
 Random Forest, XGBoost and SVM on the repository's diabetes, heart and liver datasets, uses a stratified holdout and
@@ -138,7 +141,7 @@ geographic holdout; thresholds and models are selected using training/validation
 | Liver disease (117 test rows) | XGBoost | 0.6496 | 0.9038 | 0.5663 | 0.6963 | 0.7743 |
 | BRFSS diabetes (90%-precision validation target; 11 held-out states; 17 positive predictions) | XGBoost | 0.8729 | 0.6591 | 0.0008 | 0.0017 | 0.8377 |
 | BRFSS heart disease (90%-precision validation target; 11 held-out states; 226 positive predictions) | Logistic Regression | 0.9543 | 0.7596 | 0.0185 | 0.0361 | 0.9054 |
-| Report summaries (974 grouped test examples) | TF-IDF extractive | — | — | — | ROUGE-1: 0.2908; ROUGE-2: 0.2202; ROUGE-L: 0.2657 | — |
+| Report summaries (974 grouped test examples) | TF-IDF extractive baseline | — | — | — | ROUGE-1: 0.2908; ROUGE-2: 0.2202; ROUGE-L: 0.2657 | — |
 
 These are reproducible prototype baselines, not evidence of high or clinically safe accuracy. In particular, diabetes
 holdout precision is only 0.6579 and its recall is 0.4630; the summary scores are modest and use dataset descriptions
@@ -169,6 +172,8 @@ python -m pip install -r ai_service\requirements.txt
 python -m unittest discover -s ai_service\tests
 python -m ai_service.train_models
 python -m ai_service.train_summarizer
+python -m pip install -r ai_service\requirements-transformer.txt
+python -m ai_service.train_transformer_summarizer
 python -m uvicorn ai_service.app:app --host 127.0.0.1 --port 8000
 ```
 
@@ -178,6 +183,10 @@ training code. The doctor assessment form requires all listed features, prefills
 and sends only those feature values (not the patient ID) to the loopback service. Training writes holdout metrics to
 `ai_service\models\training-report.json`; summarizer training writes ROUGE evaluation to
 `ai_service\models\summarizer-report.json`. Artifacts are intentionally ignored by Git and must be regenerated locally.
+The optional BioBERT/T5 training downloads its public base checkpoints once, then stores weights under
+`ai_service\models\biobert_t5_summarizer`; inference loads those weights locally without contacting a model provider.
+Training can be slow and memory-intensive, especially without a supported GPU. The available training references
+are weak and are not suitable for clinical use.
 
 This local setup has no Firebase Auth verification, patient authorization, production privacy controls, or clinical
 validation. Do not expose it on a network or deploy it for real health data. A production integration needs a trusted
