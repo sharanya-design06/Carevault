@@ -95,9 +95,12 @@ registers them with an email (invitation link) and sign in on the same login pag
 AI caveats: report summaries extract selectable PDF text and common lab values. An optional local BioBERT/T5
 summarizer can be fine-tuned on the repository's `mtsamples.csv` transcriptions; its `description` field is only a
 weak, non-clinician-reviewed reference. BioBERT ranks report sentences for context and fine-tuned Flan-T5 generates
-a summary. The model requires optional dependencies and locally saved weights; absent that model, the service uses
-the existing extractive TF-IDF or structured-extraction fallback. ROUGE evaluation does not establish clinical
-correctness, and summaries may omit or misstate details. It does not interpret scans. Drug checks are a rule-based
+a summary. If fine-tuned weights are absent, the service downloads the unfine-tuned public BioBERT and Flan-T5-small
+checkpoints on first startup and runs them locally; model files are cached by Hugging Face and report text is not sent
+to Hugging Face. This requires the optional transformer dependencies and internet access on first startup; if unavailable,
+the service stays up with its structured-extraction fallback and reports the reason at `/api/ai/health`. ROUGE
+evaluation does not establish clinical correctness, and summaries may omit or misstate details. It does not interpret
+scans. Drug checks are a rule-based
 lookup using the bundled interaction dataset plus a few
 severity-labelled examples; dataset provenance/licensing is unverified, most source rows have no severity, coverage
 is incomplete, and no alert does not mean a combination is safe. The training pipeline compares Logistic Regression,
@@ -184,22 +187,21 @@ From the repository root in PowerShell:
 python -m venv ai_service\.venv
 .\ai_service\.venv\Scripts\Activate.ps1
 python -m pip install -r ai_service\requirements.txt
-python -m unittest discover -s ai_service\tests
-python -m ai_service.train_models
-python -m ai_service.train_summarizer
 python -m pip install -r ai_service\requirements-transformer.txt
-python -m ai_service.train_transformer_summarizer
+python -m unittest discover -s ai_service\tests
 python -m uvicorn ai_service.app:app --host 127.0.0.1 --port 8000
 ```
 
 Open `http://127.0.0.1:8000` and sign in to use the app. Check service/model status at
-`http://127.0.0.1:8000/api/ai/health` and endpoint schemas at `/docs`. Run training again after changing a dataset or
-training code. The doctor assessment form requires all listed features, prefills only values available in the record,
+`http://127.0.0.1:8000/api/ai/health` and endpoint schemas at `/docs`. To fine-tune the BioBERT/T5 checkpoint on the
+repository's sample data instead of using the downloaded baseline, run
+`python -m ai_service.train_transformer_summarizer` before starting the service; training can take significantly
+longer. The doctor assessment form requires all listed features, prefills only values available in the record,
 and sends only those feature values (not the patient ID) to the loopback service. Training writes holdout metrics to
 `ai_service\models\training-report.json`; summarizer training writes ROUGE evaluation to
-`ai_service\models\summarizer-report.json`. Artifacts are intentionally ignored by Git and must be regenerated locally.
-The optional BioBERT/T5 training downloads its public base checkpoints once, then stores weights under
-`ai_service\models\biobert_t5_summarizer`; inference loads those weights locally without contacting a model provider.
+`ai_service\models\summarizer-report.json`. Disease model artifacts and fine-tuned summarizer weights are intentionally
+ignored by Git. Downloaded baseline checkpoints are cached outside the repository by Hugging Face; fine-tuned weights
+are stored under `ai_service\models\biobert_t5_summarizer` and take precedence over the baseline.
 Training can be slow and memory-intensive, especially without a supported GPU. The available training references
 are weak and are not suitable for clinical use.
 
