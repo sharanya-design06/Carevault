@@ -81,7 +81,8 @@
   // Asks the Cloud Function to email the invite/reset link to the address registered for this token.
   async function sendMail(kind, token) {
     const r = await fetch('/api/sendInvite', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, token }) });
-    if (!r.ok) throw new Error('Email send failed (' + r.status + ')');
+    if (r.status === 404) throw new Error('Invitation not found or expired in shared storage');
+    if (!r.ok) throw new Error('Email service unavailable (' + r.status + '); check the function logs and SMTP settings');
   }
 
   window.Remote = { enabled, pull, push, merge, putFile, getFile, sendMail };

@@ -5,4 +5,5 @@ window.CAREVAULT_REMOTE = {
   projectId: 'care-vault-project',
   storageBucket: 'care-vault-project.firebasestorage.app',
   enabled: true,
+  firebaseLogin: true,
 };

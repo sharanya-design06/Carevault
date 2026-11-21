@@ -1,8 +1,9 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // patient/secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, toast, guard } = window.UI;
 
   const NAV = [['dashboard', 'Dashboard'], ['profile', 'My Profile'], ['hrid', 'My HRID'], ['history', 'Medical History'], ['timeline', 'Health Timeline'],
-    ['reports', 'Medical Reports'], ['prescriptions', 'Prescription History'], ['allergies', 'Allergy Information'], ['access', 'Access History'],
+    ['reports', 'Medical Reports'], ['secure-ai', 'AI Summaries'], ['prescriptions', 'Prescription History'], ['allergies', 'Allergy Information'], ['access', 'Access History'],
     ['emergency', 'Emergency Access History'], ['consent', 'Consent Management'], ['settings', 'Account Settings'], ['password', 'Change Password']];
   const shell = (active, html) => window.UI.shell(NAV, 'My Health Record', active, html);
   const alertBox = (cls, html) => `<div class="alert ${cls}" role="alert">${html}</div>`;
@@ -18,11 +19,7 @@
   }
   function summaryBlock(r) {
     if (r.processingStatus === 'processing') return '<p>' + badge('processing') + ' A summary is being generated…</p>';
-    const s = r.summary;
-    if (!s) return '<p class="mut">No summary available.</p>';
-    return `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Your value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
-      ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-      <p class="mut">Automatically generated demo summary. It is not medical advice; discuss results with your clinician.</p>`;
+    return window.UI.reportSummary(r);
   }
   function medsTable(rows) {
     if (!rows.length) return '<p class="mut">No medications recorded.</p>';
@@ -79,6 +76,12 @@
       <div class="card"><h2>AI report summary</h2>${summaryBlock(r)}</div>`);
   }
 
+  function secureAiView() {
+    return shell('secure-ai', `<h1>Approved AI summaries</h1>
+      <p class="mut">Uses your dashboard sign-in; there is no separate login. Only clinician-approved summaries are available. Synthetic data only; outputs are not clinically validated.</p>
+      <iframe class="secure-ai-frame" title="Approved secure AI summaries" src="/secure-reports/?embed=patient"></iframe>`);
+  }
+
   function consentView(d, msg) {
     const c = d.consent;
     return shell('consent', `<h1>Consent Management</h1>${msg ? alertBox('ok', esc(msg)) : ''}
@@ -118,6 +121,7 @@
         ${d.timeline.map((t) => `<tr><td>${day(t.createdAt)}</td><td>${esc(t.type)}</td><td>${esc(t.title)}</td><td>${esc(t.details || '')}</td><td>${esc(t.hospitalName)}</td><td>${esc(t.author || '')}</td></tr>`).join('')}</tbody></table></div></div>`),
       timeline: () => shell('timeline', `<h1>Health Timeline</h1><div class="card">${timelineList(d.timeline)}</div>`),
       reports: () => (b ? reportView(d, b) : reportsView(d)),
+      'secure-ai': () => secureAiView(),
       prescriptions: () => shell('prescriptions', `<h1>Prescription History</h1><div class="card">${medsTable(d.medications)}</div>`),
       allergies: () => shell('allergies', `<h1>Allergy Information</h1><div class="card">${allergyTable(d.allergies)}</div>`),
       access: () => shell('access', `<h1>Access History</h1><p class="mut">Staff who opened or changed your record, including denied attempts.</p><div class="card">${accessTable(S.patientAccessHistory())}</div>`),
@@ -149,11 +153,11 @@
     const b = e.target.closest('[data-action]');
     if (!b) return;
     if (b.dataset.action === 'logout') { S.logout(); location.href = '/'; }
-    else if (b.dataset.action === 'openPdf') {
+    else if (b.dataset.action === 'openPdf' || b.dataset.action === 'openPdfPage') {
       const r = await S.patientReportFile(b.dataset.id);
       if (!r.ok) { toast(r.error); return; }
       const url = URL.createObjectURL(r.blob);
-      window.open(url, '_blank', 'noopener');
+      window.open(url + (b.dataset.page ? '#page=' + b.dataset.page : ''), '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
   });

@@ -1,4 +1,5 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // assets/js/clinical-secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, toast, guard } = window.UI;
 
   const NAV = [['dashboard', 'Dashboard'], ['search', 'Patient Search']];

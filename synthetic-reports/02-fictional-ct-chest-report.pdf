@@ -1,0 +1,46 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1242 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional CT Chest Report) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-RAD-002. Fictional patient: Sample Person 002, age 54.) Tj ET
+BT /F1 9 Tf 48 714 Td (Study date: 2026-02-03. Study: CT chest with contrast. Prior study: none.) Tj ET
+BT /F1 9 Tf 48 699 Td (Right upper lobe: 8 mm solid nodule with smooth margins; indeterminate.) Tj ET
+BT /F1 9 Tf 48 684 Td (Mediastinum: subcarinal lymph node measures 11 mm short axis.) Tj ET
+BT /F1 9 Tf 48 669 Td (Pleura: small right pleural effusion, described as likely trace.) Tj ET
+BT /F1 9 Tf 48 654 Td (Left lower lobe: mild subsegmental atelectasis.) Tj ET
+BT /F1 9 Tf 48 639 Td (Liver: 2 cm simple-appearing hepatic cyst.) Tj ET
+BT /F1 9 Tf 48 624 Td (Impression: indeterminate 8 mm right upper lobe nodule.) Tj ET
+BT /F1 9 Tf 48 609 Td (Source recommendation: follow-up CT in 3 months for the nodule.) Tj ET
+BT /F1 9 Tf 48 594 Td (Source impression: other findings are likely benign or incidental.) Tj ET
+BT /F1 9 Tf 48 579 Td (This invented fixture is not a real scan or medical recommendation.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 1.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000139 00000 n 
+0000000236 00000 n 
+0000000362 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1656
+%%EOF

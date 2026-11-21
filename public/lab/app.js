@@ -1,4 +1,5 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // assets/js/clinical-secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, toast, guard } = window.UI;
 
   const NAV = [['dashboard', 'Dashboard'], ['search', 'Patient Search'], ['reports', 'Uploaded Reports']];
@@ -78,9 +79,7 @@
         ${r.sha256 ? `<p>SHA-256: <code>${esc(r.sha256)}</code></p>` : ''}
         ${r.hasFile ? `<button data-action="openPdf" data-id="${esc(r.id)}">Open PDF</button>` : ''}</div>
       <div class="card"><h2>AI processing result</h2><p>Status: ${badge(r.processingStatus)}${r.processedAt ? ' · ' + esc(fmt(r.processedAt)) : ''}</p>
-        ${s ? `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
-          ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-          <p class="mut">AI-generated (${esc(s.model || 'demo')}), demo only — requires clinician review.</p>` : '<p class="mut">Processing…</p>'}</div>`);
+        ${s ? window.UI.reportSummary(r) : '<p class="mut">Processing…</p>'}</div>`);
   }
 
   async function render() {
@@ -124,11 +123,11 @@
     const b = e.target.closest('[data-action]');
     if (!b) return;
     if (b.dataset.action === 'logout') { S.logout(); location.href = '/'; }
-    else if (b.dataset.action === 'openPdf') {
+    else if (b.dataset.action === 'openPdf' || b.dataset.action === 'openPdfPage') {
       const r = await S.labReportFile(b.dataset.id);
       if (!r.ok) { toast(r.error); return; }
       const url = URL.createObjectURL(r.blob);
-      window.open(url, '_blank', 'noopener');
+      window.open(url + (b.dataset.page ? '#page=' + b.dataset.page : ''), '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
   });

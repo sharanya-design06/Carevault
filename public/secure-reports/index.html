@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>CareVault – Secure report summaries</title>
+  <link rel="stylesheet" href="/assets/css/styles.css">
+</head>
+<body>
+  <main class="content" style="max-width:900px;margin:0 auto;padding:24px">
+    <h1 id="pageTitle">Secure report summaries</h1>
+    <p id="pageIntro" class="mut">Experimental. Use synthetic data only. Summaries are drafts that a clinician must verify against the original report.</p>
+    <p id="message" class="alert" role="status" aria-live="polite">Sign in to continue.</p>
+
+    <form id="login" class="card">
+      <h2>Sign in</h2>
+      <label>Email <input name="email" type="email" autocomplete="username" required></label>
+      <label>Password <input name="password" type="password" autocomplete="current-password" required></label>
+      <p><button class="primary" type="submit">Sign in</button></p>
+    </form>
+
+    <section id="workspace" hidden>
+      <p><span id="who" class="badge"></span> <button id="logout" type="button" class="sm">Sign out</button></p>
+
+      <form id="upload" class="card" hidden>
+        <h2>Upload a report (PDF, max 10 MiB)</h2>
+        <label>Patient ID <input name="patientId" required maxlength="128" pattern="[A-Za-z0-9_-]+"></label>
+        <label>Title <input name="title" required minlength="3" maxlength="120"></label>
+        <label>PDF file <input name="file" type="file" accept="application/pdf,.pdf" required></label>
+        <p><button class="primary" type="submit">Upload</button></p>
+      </form>
+
+      <form id="status" class="card" hidden>
+        <h2>Report</h2>
+        <div class="toolbar">
+          <input name="reportId" placeholder="Report ID" required maxlength="128" aria-label="Report ID">
+          <button type="submit" id="checkStatus">Check status</button>
+          <button type="button" id="retry" hidden>Retry extraction</button>
+          <button type="button" id="loadOriginal" hidden>View original PDF</button>
+        </div>
+        <p id="result" class="mut"></p>
+        <iframe id="originalPdf" title="Original report" hidden style="width:100%;height:480px;border:1px solid #ccc"></iframe>
+      </form>
+
+      <section id="consentCard" class="card" hidden>
+        <h2>AI processing consent</h2>
+        <p class="mut">Allow clinicians to generate a draft AI summary of your reports. You can withdraw at any time; withdrawing immediately hides summaries.</p>
+        <label><input id="aiConsent" type="checkbox"> I consent to AI processing of my reports</label>
+        <p><button id="saveConsent" type="button" class="primary">Save consent</button></p>
+      </section>
+
+      <section id="summaryCard" class="card" hidden>
+        <h2 id="summaryTitle">Summary</h2>
+        <div class="toolbar">
+          <button id="generate" type="button" class="primary" hidden>Generate AI summary</button>
+          <button id="loadSummary" type="button">Load summary</button>
+        </div>
+        <p id="aiStatus" class="mut"></p>
+        <div id="summaryBody"></div>
+        <div id="reviewControls" hidden>
+          <label><input id="sourceConfirmed" type="checkbox"> I compared every statement with the original report</label>
+          <div class="toolbar">
+            <button id="approve" type="button" class="primary" disabled>Approve</button>
+            <select id="rejectAction" aria-label="Rejection reason">
+              <option value="reject">Reject</option>
+              <option value="incorrect">Reject: incorrect</option>
+              <option value="not-useful">Reject: not useful</option>
+            </select>
+            <button id="reject" type="button" disabled>Submit rejection</button>
+          </div>
+          <label>Optional note (no patient details) <input id="comment" maxlength="300"></label>
+        </div>
+      </section>
+
+      <section id="pageCard" class="card" hidden>
+        <h2>Extracted page</h2>
+        <form id="page" class="toolbar">
+          <input name="number" type="number" min="1" value="1" aria-label="Page number">
+          <button type="submit">Show page</button>
+        </form>
+        <pre id="pageText" style="white-space:pre-wrap"></pre>
+      </section>
+    </section>
+  </main>
+  <script src="/assets/js/remote-config.js"></script>
+  <script src="/assets/js/secure-reports.js"></script>
+</body>
+</html>

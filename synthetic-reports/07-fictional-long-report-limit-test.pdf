@@ -1,0 +1,74 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R 6 0 R] /Count 2 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1187 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional Long Report - Limit Test) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-LONG-007. This intentionally long fixture tests input limits.) Tj ET
+BT /F1 9 Tf 48 714 Td (All events, dates, observations, and values are invented.) Tj ET
+BT /F1 9 Tf 48 699 Td (2026-07-01: fictional observation A recorded.) Tj ET
+BT /F1 9 Tf 48 684 Td (2026-07-02: fictional observation B recorded.) Tj ET
+BT /F1 9 Tf 48 669 Td (2026-07-03: fictional observation C recorded.) Tj ET
+BT /F1 9 Tf 48 654 Td (2026-07-04: fictional observation D recorded.) Tj ET
+BT /F1 9 Tf 48 639 Td (2026-07-05: fictional observation E recorded.) Tj ET
+BT /F1 9 Tf 48 624 Td (2026-07-06: fictional observation F recorded.) Tj ET
+BT /F1 9 Tf 48 609 Td (2026-07-07: fictional observation G recorded.) Tj ET
+BT /F1 9 Tf 48 594 Td (2026-07-08: fictional observation H recorded.) Tj ET
+BT /F1 9 Tf 48 579 Td (2026-07-09: fictional observation I recorded.) Tj ET
+BT /F1 9 Tf 48 564 Td (2026-07-10: fictional observation J recorded.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 2.) Tj ET
+endstream
+endobj
+6 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 7 0 R >>
+endobj
+7 0 obj
+<< /Length 1344 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional Long Report - Limit Test) Tj ET
+BT /F1 9 Tf 48 729 Td (2026-07-11: fictional observation K recorded.) Tj ET
+BT /F1 9 Tf 48 714 Td (2026-07-12: fictional observation L recorded.) Tj ET
+BT /F1 9 Tf 48 699 Td (2026-07-13: fictional observation M recorded.) Tj ET
+BT /F1 9 Tf 48 684 Td (2026-07-14: fictional observation N recorded.) Tj ET
+BT /F1 9 Tf 48 669 Td (2026-07-15: fictional observation O recorded.) Tj ET
+BT /F1 9 Tf 48 654 Td (2026-07-16: fictional observation P recorded.) Tj ET
+BT /F1 9 Tf 48 639 Td (2026-07-17: fictional observation Q recorded.) Tj ET
+BT /F1 9 Tf 48 624 Td (2026-07-18: fictional observation R recorded.) Tj ET
+BT /F1 9 Tf 48 609 Td (2026-07-19: fictional observation S recorded.) Tj ET
+BT /F1 9 Tf 48 594 Td (2026-07-20: fictional observation T recorded.) Tj ET
+BT /F1 9 Tf 48 579 Td (2026-07-21: fictional observation U recorded.) Tj ET
+BT /F1 9 Tf 48 564 Td (2026-07-22: fictional observation V recorded.) Tj ET
+BT /F1 9 Tf 48 549 Td (Expected current behavior: reject over-limit input; save no partial draft.) Tj ET
+BT /F1 9 Tf 48 534 Td (Synthetic software-test fixture only; never use for patient care.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 2 of 2.) Tj ET
+endstream
+endobj
+xref
+0 8
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000145 00000 n 
+0000000242 00000 n 
+0000000368 00000 n 
+0000001607 00000 n 
+0000001733 00000 n 
+trailer
+<< /Size 8 /Root 1 0 R >>
+startxref
+3129
+%%EOF

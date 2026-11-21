@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>CareVault – Set your password</title>
+  <link rel="stylesheet" href="/assets/css/styles.css">
+</head>
+<body>
+  <main id="app" class="card" style="max-width:420px;margin:48px auto">
+    <h1>Set your password</h1>
+    <p id="status" class="mut" role="status">Checking your link…</p>
+    <form id="form" hidden autocomplete="off">
+      <p>Account: <b id="email"></b></p>
+      <label for="pw">New password (at least 12 characters)</label>
+      <input id="pw" type="password" minlength="12" maxlength="128" required autocomplete="new-password">
+      <label for="pw2">Confirm password</label>
+      <input id="pw2" type="password" minlength="12" maxlength="128" required autocomplete="new-password">
+      <div id="err" class="err" role="alert" hidden></div>
+      <p><button class="primary" type="submit">Set password</button></p>
+    </form>
+    <p id="done" hidden>Your password is set. <a href="/">Sign in</a></p>
+  </main>
+  <script src="/assets/js/remote-config.js"></script>
+  <script src="/set-password/set-password.js"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1156 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional Medication Reconciliation) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-MED-005. All people and medicines are fictional.) Tj ET
+BT /F1 9 Tf 48 714 Td (Review date: 2026-05-06. Source: simulated patient interview.) Tj ET
+BT /F1 9 Tf 48 699 Td (Exampletab A: patient-reported, 1 fictional tablet each morning.) Tj ET
+BT /F1 9 Tf 48 684 Td (Exampletab B: patient-reported, dose not provided.) Tj ET
+BT /F1 9 Tf 48 669 Td (Exampletab C: listed in an older note; current use not confirmed.) Tj ET
+BT /F1 9 Tf 48 654 Td (Reported allergy: fictional Agent Z; reaction not documented.) Tj ET
+BT /F1 9 Tf 48 639 Td (The record does not confirm adherence, prescriber, or dispensing date.) Tj ET
+BT /F1 9 Tf 48 624 Td (No interaction assessment or medication change is documented.) Tj ET
+BT /F1 9 Tf 48 609 Td (Do not treat this list as a prescription or a verified current regimen.) Tj ET
+BT /F1 9 Tf 48 594 Td (This invented document is not for clinical use.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 1.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000139 00000 n 
+0000000236 00000 n 
+0000000362 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1570
+%%EOF

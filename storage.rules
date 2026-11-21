@@ -1,7 +1,7 @@
 rules_version = '2';
-// DEMO ONLY: see firestore.rules. Replace with Firebase Auth-based rules before real use.
+// Clients never read or write Storage directly; reports are stored and served by Cloud Functions (Admin SDK).
 service firebase.storage {
   match /b/{bucket}/o {
-    match /reports/{id} { allow read; allow write: if request.resource.size < 10 * 1024 * 1024 && request.resource.contentType == 'application/pdf'; }
+    match /{allPaths=**} { allow read, write: if false; }
   }
 }

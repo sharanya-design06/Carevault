@@ -1,9 +1,10 @@
 (function () {
-  const { $app, S, esc, fmt, badge, hname, toast, logTable, csv, guard, refocus } = window.UI;
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // secure.js serves Firebase sessions
+  const { $app, S, esc, fmt, badge, hname, toast, invitationStatus, logTable, csv, guard, refocus } = window.UI;
 
   const NAV = [
     ['dashboard', 'Dashboard'], ['hospitals', 'Hospitals'], ['hospitals/new', 'Register Hospital'],
-    ['users', 'User Management'], ['audit', 'Global Audit Logs'], ['config', 'System Configuration'],
+    ['admins', 'System Admins'], ['users', 'User Management'], ['audit', 'Global Audit Logs'], ['config', 'System Configuration'],
   ];
   const shell = (active, html) => window.UI.shell(NAV, 'System Admin Console', active, html);
 
@@ -25,7 +26,7 @@
         <div class="stat"><b>${recent.filter((l) => l.outcome === 'failure').length}</b><span>Failures (24h)</span></div>
       </div>
       <div class="actions card"><a class="btn primary" href="#/hospitals/new">Register hospital</a>
-        <a class="btn" href="#/hospitals">Manage hospitals</a><a class="btn" href="#/users">Manage users</a>
+        <a class="btn" href="#/hospitals">Manage hospitals</a><a class="btn" href="#/admins">Manage System Admins</a><a class="btn" href="#/users">Manage users</a>
         <a class="btn" href="#/audit">View audit logs</a><a class="btn" href="#/config">System configuration</a></div>
       <div class="two">
         <div class="card"><h2>Recent activity</h2>${logTable(logs.slice(0, 6), true)}</div>
@@ -45,14 +46,14 @@
       </tbody></table></div>`);
   }
 
-  function addHospitalView(err, created) {
+  function addHospitalView(err, created, inviteError) {
     if (created) {
       return shell('hospitals/new', `<h1>Hospital registered</h1><div class="card">
         <p><b>${esc(created.name)}</b> was created with status ${badge('pending')}. A password-setup invitation was issued to <b>${esc(created.email)}</b>
         (valid until ${fmt(created.invite.expiresAt)}).</p>
-        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p>
+        ${invitationStatus(inviteError)}
         <div class="linkbox">${esc(S.inviteLink(created))}</div>
-        <p class="actions"><a class="btn primary" href="#/hospitals/${esc(created.id)}">View details</a><a class="btn" href="#/hospitals/new">Register another</a></p></div>`);
+        <p class="actions"><a class="btn primary" href="#/hospitals/${esc(created.id)}">View details</a><button type="button" class="btn" data-action="createAnotherHospital">Create another</button></p></div>`);
     }
     const f = (id, label, type = 'text', req = true) => `<div><label for="${id}">${label}</label><input id="${id}" name="${id}" type="${type}" ${req ? 'required' : ''} maxlength="120"></div>`;
     return shell('hospitals/new', `<h1>Register Hospital</h1><form class="card" data-form="addHospital">
@@ -121,6 +122,47 @@
       <div class="card">${userTable(rows, true)}</div>`);
   }
 
+  function adminsView(err, created, inviteError) {
+    const admins = S.systemAdmins();
+    const me = S.session();
+    const isActive = (admin) => !!admin.passwordHash && (!admin.status || admin.status === 'active');
+    const sharedStorageNotice = window.Remote && window.Remote.enabled
+      ? 'Admin changes are shared through Firestore.'
+      : 'This browser is using local demo data; other admins will not see changes until shared storage is configured.';
+    return shell('admins', `<h1>System Admins</h1>
+      <p class="mut">System Admins have full access to platform administration. Only invite people who need these privileges.</p>
+      <p class="mut">Deactivation requires approval from a majority of the other active System Admins. The requesting admin's approval counts; the admin being deactivated cannot approve.</p>
+      <p class="mut">${esc(sharedStorageNotice)}</p>
+      ${created ? `<div class="card"><h2>Invitation created</h2><p>A password-setup invitation was created for <b>${esc(created.email)}</b>, valid until ${fmt(created.invite.expiresAt)}.</p>${invitationStatus(inviteError)}<div class="linkbox">${esc(S.inviteLink(created))}</div></div>` : ''}
+      <form class="card" data-form="addSystemAdmin"><h2>Add System Admin</h2>
+        <div class="formrow"><div><label for="adminName">Full name</label><input id="adminName" name="name" required maxlength="100"></div>
+        <div><label for="adminEmail">Email</label><input id="adminEmail" name="email" type="email" required maxlength="120"></div></div>
+        <label for="adminUsername">Username (optional; generated from email if blank)</label><input id="adminUsername" name="username" maxlength="32">
+        <p class="mut">No password is set here. The invited admin creates their own password.</p>
+        ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}
+        <p><button class="primary" type="submit">Create &amp; send invitation</button></p></form>
+      <div class="card"><h2>All System Admins</h2>${admins.length ? `<div class="tablewrap"><table><thead><tr><th>Name</th><th>Email</th><th>Username</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        ${admins.map((admin) => {
+          const voters = admins.filter((x) => x.id !== admin.id && isActive(x));
+          const required = Math.floor(voters.length / 2) + 1;
+          const request = admin.deactivationRequest;
+          const approvals = request && Array.isArray(request.approvals) ? request.approvals : [];
+          const approved = approvals.filter((email) => voters.some((x) => x.email === email)).length;
+          const canApprove = request && isActive(admin) && me && me.id !== admin.id && voters.some((x) => x.id === me.id) && !approvals.includes(me.email);
+          let actions = '';
+          if (admin.invite) actions += `<button class="sm" data-action="resendAdmin" data-id="${esc(admin.id)}">Regenerate / resend invitation</button>`;
+          if (isActive(admin) && !request && me && me.id !== admin.id) actions += ` <button class="sm danger" data-action="requestAdminInactive" data-id="${esc(admin.id)}">Request deactivation</button>`;
+          if (request && isActive(admin)) {
+            actions += `<div class="mut">Deactivation approvals: ${approved} of ${required}; requested by ${esc(request.requestedBy)}.</div>`;
+            if (canApprove) actions += `<button class="sm danger" data-action="approveAdminInactive" data-id="${esc(admin.id)}">Approve deactivation</button>`;
+            else if (me && me.id !== admin.id && approvals.includes(me.email)) actions += '<span class="mut">Your approval is recorded.</span>';
+            if (me && request.requestedBy === me.email) actions += ` <button class="sm" data-action="cancelAdminInactive" data-id="${esc(admin.id)}">Cancel request</button>`;
+          }
+          return `<tr><td>${esc(admin.name)}</td><td>${esc(admin.email)}</td><td>${esc(admin.username || '')}</td><td>${badge(admin.status || 'active')}${admin.invite ? `<div class="mut">Invitation expires ${fmt(admin.invite.expiresAt)}</div>` : ''}</td><td>${actions || '—'}</td></tr>`;
+        }).join('')}
+        </tbody></table></div>` : '<p class="mut">No System Admin accounts.</p>'}</div>`);
+  }
+
   function auditFilterRows(f) {
     return S.audit().filter((l) =>
       (!f.category || l.category === f.category) && (!f.outcome || l.outcome === f.outcome) &&
@@ -174,6 +216,7 @@
         else html = hospitalsView();
         break;
       case 'users': html = usersView(); break;
+      case 'admins': html = adminsView(flashErr); break;
       case 'audit': html = auditView(); break;
       case 'config': html = configView(); break;
       default: html = shell('', '<h1>Page not found</h1>');
@@ -182,15 +225,28 @@
     $app.innerHTML = html;
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
     const d = Object.fromEntries(new FormData(form));
     switch (form.dataset.form) {
+      case 'addSystemAdmin': {
+        form.querySelector('button[type="submit"]').disabled = true;
+        const r = S.addSystemAdmin(d);
+        if (r.ok) {
+          const delivery = await S.sendInvitation(r.admin.invite.token);
+          $app.innerHTML = adminsView('', r.admin, delivery.ok ? '' : delivery.error);
+        } else { flashErr = r.error; render(); }
+        break;
+      }
       case 'addHospital': {
+        form.querySelector('button[type="submit"]').disabled = true;
         const r = S.addHospital(d);
-        if (r.ok) $app.innerHTML = addHospitalView('', r.hospital); else { flashErr = r.error; render(); }
+        if (r.ok) {
+          const delivery = await S.sendInvitation(r.hospital.invite.token);
+          $app.innerHTML = addHospitalView('', r.hospital, delivery.ok ? '' : delivery.error);
+        } else { flashErr = r.error; render(); }
         break;
       }
       case 'editHospital': S.updateHospital(d.id, { phone: d.phone.trim(), address: d.address.trim() }); toast('Saved'); render(); break;
@@ -211,7 +267,39 @@
       case 'logout': S.logout(); location.href = '/'; break;
       case 'activate': S.setStatus(id, 'active') ? toast('Hospital activated') : toast('Cannot activate yet'); render(); break;
       case 'deactivate': if (confirm('Deactivate this hospital? All its users will lose access.')) { S.setStatus(id, 'inactive'); toast('Hospital deactivated'); render(); } break;
-      case 'resend': S.resendInvite(id); toast('Invitation regenerated'); render(); break;
+      case 'createAnotherHospital': flashErr = ''; $app.innerHTML = addHospitalView(); break;
+      case 'resend': {
+        b.disabled = true;
+        const r = S.resendInvite(id);
+        const delivery = r.ok ? await S.sendInvitation(r.hospital.invite.token) : r;
+        render(); toast(delivery.ok ? 'Invitation email sent' : delivery.error); break;
+      }
+      case 'resendAdmin': {
+        b.disabled = true;
+        const r = S.resendSystemAdminInvite(id);
+        if (r.ok) { const delivery = await S.sendInvitation(r.admin.invite.token); render(); toast(delivery.ok ? 'Invitation email sent' : delivery.error); }
+        else { flashErr = r.error; render(); }
+        break;
+      }
+      case 'requestAdminInactive': {
+        if (!confirm('Request deactivation of this System Admin? Your approval will count toward the required majority.')) break;
+        const r = S.requestAdminDeactivation(id);
+        if (r.ok) { toast(r.completed ? 'System Admin deactivated by majority approval' : `Deactivation request opened (${r.approved} of ${r.required} approvals)`); render(); }
+        else { flashErr = r.error; render(); }
+        break;
+      }
+      case 'approveAdminInactive': {
+        const r = S.approveAdminDeactivation(id);
+        if (r.ok) { toast(r.completed ? 'System Admin deactivated by majority approval' : `Approval recorded (${r.approved} of ${r.required})`); render(); }
+        else { flashErr = r.error; render(); }
+        break;
+      }
+      case 'cancelAdminInactive': {
+        const r = S.cancelAdminDeactivation(id);
+        if (r.ok) { toast('Deactivation request cancelled'); render(); }
+        else { flashErr = r.error; render(); }
+        break;
+      }
       case 'suspendUser': if (confirm('Suspend this user?')) { S.setUserStatus(id, 'suspended'); render(); } break;
       case 'activateUser': S.setUserStatus(id, 'active'); render(); break;
       case 'forceReset': S.forceReset(id); toast('Password reset required at next login'); break;

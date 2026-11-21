@@ -1,1 +1,11 @@
 .firebase/
+node_modules
+# Credentials and local emulator logs must never be committed
+*service-account*.json
+*-sa.json
+*.pem
+.env
+.env.*
+*-debug.log
+# Non-secret Functions settings for the live project are committed on purpose
+!functions/.env.care-vault-project

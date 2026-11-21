@@ -1,4 +1,5 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, hname, toast, logTable, csv, guard, refocus } = window.UI;
 
   const NAV = [
@@ -64,14 +65,14 @@
       <div class="card">${staffTable(rows)}</div>`);
   }
 
-  function hAddStaffView(err, created) {
+  function hAddStaffView(err, created, inviteError) {
     if (created) {
       return shell('staff/new', `<h1>Staff account created</h1><div class="card">
         <p><b>${esc(created.name)}</b> (${esc(created.role)}) was created with status ${badge('pending')}. An activation invitation was issued to <b>${esc(created.email)}</b>,
         valid until ${fmt(created.invite.expiresAt)}. The staff member sets their own password; you never see it.</p>
-        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p>
+        ${window.UI.invitationStatus(inviteError)}
         <div class="linkbox">${esc(S.inviteLink(created))}</div>
-        <p class="actions"><a class="btn primary" href="#/staff/${esc(created.id)}">View details</a><a class="btn" href="#/staff/new">Create another</a></p></div>`);
+        <p class="actions"><a class="btn primary" href="#/staff/${esc(created.id)}">View details</a><button type="button" class="btn" data-action="createAnotherStaff">Create another</button></p></div>`);
     }
     return shell('staff/new', `<h1>Create Staff Account</h1><form class="card" data-form="addStaff">
       <div class="formrow"><div><label for="name">Full name</label><input id="name" name="name" required maxlength="100"></div>
@@ -149,7 +150,7 @@
     $app.innerHTML = html;
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
@@ -157,21 +158,31 @@
     switch (form.dataset.form) {
       case 'profile': S.updateProfile(d); toast('Profile updated'); render(); break;
       case 'addStaff': {
+        form.querySelector('button[type="submit"]').disabled = true;
         const r = S.addStaff(d);
-        if (r.ok) $app.innerHTML = hAddStaffView('', r.user); else { flashErr = r.error; render(); }
+        if (r.ok) {
+          const delivery = await S.sendInvitation(r.user.invite.token);
+          $app.innerHTML = hAddStaffView('', r.user, delivery.ok ? '' : delivery.error);
+        } else { flashErr = r.error; render(); }
         break;
       }
       case 'editStaff': S.updateStaff(d.id, d) ? toast('Saved') : toast('Not allowed'); render(); break;
     }
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-action]');
     if (!b) return;
     const id = b.dataset.id;
     switch (b.dataset.action) {
       case 'logout': S.logout(); location.href = '/'; break;
-      case 'resendStaff': S.resendStaffInvite(id); toast('Invitation regenerated'); render(); break;
+      case 'createAnotherStaff': flashErr = ''; $app.innerHTML = hAddStaffView(); break;
+      case 'resendStaff': {
+        b.disabled = true;
+        const r = S.resendStaffInvite(id);
+        const delivery = r.ok ? await S.sendInvitation(r.user.invite.token) : r;
+        render(); toast(delivery.ok ? 'Invitation email sent' : delivery.error); break;
+      }
       case 'suspendStaff': if (confirm('Suspend this staff member?')) { S.setStaffStatus(id, 'suspended'); render(); } break;
       case 'activateStaff': S.setStaffStatus(id, 'active'); render(); break;
       case 'resetStaff': S.staffForceReset(id) && toast('Password reset required at next login'); break;

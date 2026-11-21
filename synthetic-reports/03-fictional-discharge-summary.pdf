@@ -1,0 +1,45 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1192 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional Discharge Summary) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-DIS-003. Fictional patient: Sample Person 003.) Tj ET
+BT /F1 9 Tf 48 714 Td (Encounter: 2026-03-10 through 2026-03-12. Facility: Example Unit.) Tj ET
+BT /F1 9 Tf 48 699 Td (Reason documented: evaluation of a fictional transient symptom.) Tj ET
+BT /F1 9 Tf 48 684 Td (Hospital course: observation completed; no procedure is listed.) Tj ET
+BT /F1 9 Tf 48 669 Td (Source-listed diagnosis: example diagnosis A; code not provided.) Tj ET
+BT /F1 9 Tf 48 654 Td (Medication: Exampletab, fictional agent, 1 unit daily; adherence unknown.) Tj ET
+BT /F1 9 Tf 48 639 Td (Pending test: synthetic assay Q; result unavailable at discharge.) Tj ET
+BT /F1 9 Tf 48 624 Td (Allergy status: unknown. Source follow-up: contact fictional clinic in 7 days.) Tj ET
+BT /F1 9 Tf 48 609 Td (Clinician contact and appointment time: not provided.) Tj ET
+BT /F1 9 Tf 48 594 Td (Synthetic test fixture only; not for patient care or clinical decisions.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 1.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000139 00000 n 
+0000000236 00000 n 
+0000000362 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1606
+%%EOF

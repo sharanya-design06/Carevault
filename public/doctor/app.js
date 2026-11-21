@@ -1,7 +1,8 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // assets/js/clinical-secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, toast, logTable, guard, refocus } = window.UI;
 
-  const NAV = [['dashboard', 'Dashboard'], ['search', 'Patient Search'], ['history', 'Access History']];
+  const NAV = [['dashboard', 'Dashboard'], ['search', 'Patient Search'], ['history', 'Access History'], ['secure-ai', 'AI Report Review']];
   const shell = (active, html) => window.UI.shell(NAV, 'Doctor Workspace', active, html);
   const age = (dob) => { const d = new Date(dob), n = new Date(); let a = n.getFullYear() - d.getFullYear(); if (n < new Date(n.getFullYear(), d.getMonth(), d.getDate())) a--; return a; };
   const day = (iso) => (iso ? new Date(iso).toLocaleDateString() : '—');
@@ -93,11 +94,7 @@
   }
   function summaryBlock(r) {
     if (r.processingStatus === 'processing') return '<p>' + badge('processing') + ' AI summary is being generated…</p>';
-    const s = r.summary;
-    if (!s) return '<p class="mut">No summary available.</p>';
-    return `<p>${esc(s.headline)}</p>${s.findings.length ? `<table><thead><tr><th>Test</th><th>Value</th><th>Reference</th><th>Flag</th></tr></thead><tbody>
-      ${s.findings.map((f) => `<tr><td>${esc(f.test)}</td><td>${esc(f.value)} ${esc(f.unit)}</td><td>${esc(f.range)}</td><td>${badge(f.flag)}</td></tr>`).join('')}</tbody></table>` : ''}
-      <p class="mut">AI-generated (${esc(s.model || 'demo')}), demo only — requires clinician review against the source PDF.</p>`;
+    return window.UI.reportSummary(r);
   }
 
   function overviewTab(d) {
@@ -195,6 +192,12 @@
       <div class="card"><h2>AI report summary</h2>${summaryBlock(x)}</div>`);
   }
 
+  function secureAiView() {
+    return shell('secure-ai', `<h1>Secure AI report review</h1>
+      <p class="mut">Uses your dashboard sign-in; there is no separate login. Generate a draft, compare every statement with the original report, then approve or reject it. Synthetic data only; outputs are not clinically validated.</p>
+      <iframe class="secure-ai-frame" title="Secure AI report review" src="/secure-reports/?embed=doctor"></iframe>`);
+  }
+
   async function render() {
     await S.ready();
     if (!guard('doctor')) return;
@@ -208,6 +211,7 @@
     else if (a === 'emergency') html = emergencyView(b);
     else if (a === 'search') html = searchView();
     else if (a === 'history') html = historyView();
+    else if (a === 'secure-ai') html = secureAiView();
     else html = dashboardView();
     if (html) $app.innerHTML = html;
   }
@@ -250,11 +254,11 @@
       const form = b.closest('form'), r = S.doctorMedicationCheck(form.dataset.hrid, form.elements.name.value);
       if (r.ok === false) { toast(r.error || 'Enter a medication first'); return; }
       form.querySelector('#alerts').innerHTML = alertsHtml(r);
-    } else if (b.dataset.action === 'openPdf') {
+    } else if (b.dataset.action === 'openPdf' || b.dataset.action === 'openPdfPage') {
       const r = await S.doctorReportFile(b.dataset.id);
       if (!r.ok) { toast(r.error); return; }
       const url = URL.createObjectURL(r.blob);
-      window.open(url, '_blank', 'noopener');
+      window.open(url + (b.dataset.page ? '#page=' + b.dataset.page : ''), '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     }
   });

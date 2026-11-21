@@ -88,18 +88,6 @@
   ];
   const DRUG_NAMES = Array.from(new Set(Object.keys(DRUG_CLASSES).reduce((l, c) => l.concat(DRUG_CLASSES[c].filter((n) => !Object.keys(DRUG_CLASSES).includes(n) && !['nsaids', 'opioids', 'sulfa', 'sulfa drugs', 'penicillin'].includes(n))), [])
     .concat(['warfarin', 'lisinopril', 'metformin', 'amlodipine', 'paracetamol', 'omeprazole', 'clopidogrel', 'sertraline', 'digoxin', 'amiodarone', 'methotrexate', 'sildenafil', 'nitroglycerin', 'spironolactone', 'potassium chloride', 'trimethoprim', 'furosemide', 'metoprolol', 'prednisolone', 'salbutamol', 'insulin glargine']))).sort();
-  const LAB_TESTS = [
-    ['HbA1c', /hba1c|glycated h(?:a)?emoglobin/i, '%', 4, 5.6],
-    ['Fasting glucose', /(?:fasting )?glucose/i, 'mg/dL', 70, 99],
-    ['Total cholesterol', /total cholesterol/i, 'mg/dL', 0, 199],
-    ['LDL cholesterol', /\bldl\b/i, 'mg/dL', 0, 129],
-    ['HDL cholesterol', /\bhdl\b/i, 'mg/dL', 40, 200],
-    ['Triglycerides', /triglycerides?/i, 'mg/dL', 0, 149],
-    ['Creatinine', /creatinine/i, 'mg/dL', 0.6, 1.3],
-    ['eGFR', /\begfr\b/i, 'mL/min/1.73m²', 60, 200],
-    ['Hemoglobin', /h(?:a)?emoglobin(?! ?a1c)/i, 'g/dL', 12, 17.5],
-  ];
-
   const norm = (v) => String(v == null ? '' : v).trim().toLowerCase();
   const normHrid = (v) => String(v == null ? '' : v).trim().toUpperCase();
   const hosName = (id) => (db.hospitals.find((h) => h.id === id) || {}).name || 'Unknown hospital';
@@ -193,25 +181,6 @@
     ];
   }
 
-  // Best-effort extraction of common lab values from PDF text; compressed or scanned PDFs yield no values.
-  function summarizeReport(buf) {
-    const text = new TextDecoder('latin1').decode(new Uint8Array(buf).subarray(0, 3 * 1024 * 1024));
-    const findings = [];
-    LAB_TESTS.forEach(([test, re, unit, lo, hi]) => {
-      const m = new RegExp('(?:' + re.source + ')[^0-9\\n\\r]{0,25}(\\d+(?:\\.\\d+)?)', 'i').exec(text);
-      if (!m) return;
-      const value = parseFloat(m[1]);
-      findings.push({ test, value, unit, range: lo + '–' + hi, flag: value < lo ? 'low' : value > hi ? 'high' : 'normal' });
-    });
-    const abnormal = findings.filter((x) => x.flag !== 'normal');
-    return {
-      headline: findings.length
-        ? findings.length + ' value(s) extracted automatically; ' + abnormal.length + ' outside the reference range' + (abnormal.length ? ': ' + abnormal.map((x) => x.test).join(', ') : '') + '.'
-        : 'No structured values could be extracted automatically (scanned or compressed PDF). Manual review of the PDF is required.',
-      findings, extracted: findings.length > 0, model: 'demo-heuristic-v0', generatedAt: now(),
-    };
-  }
-
   const idbOpen = () => new Promise((res, rej) => { const r = indexedDB.open('carevault-files', 1); r.onupgradeneeded = () => r.result.createObjectStore('files'); r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); });
   const idbLocalPut = async (key, value) => { const d = await idbOpen(); return new Promise((res, rej) => { const t = d.transaction('files', 'readwrite'); t.objectStore('files').put(value, key); t.oncomplete = () => res(); t.onerror = () => rej(t.error); }); };
   const idbLocalGet = async (key) => { const d = await idbOpen(); return new Promise((res, rej) => { const q = d.transaction('files').objectStore('files').get(key); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); }); };
@@ -233,10 +202,16 @@
     try {
       const buf = await idbGet(id);
       if (!buf) throw new Error('stored file not found');
-      await new Promise((res) => setTimeout(res, 1500));
-      r.summary = summarizeReport(buf); r.processingStatus = 'complete';
+      const { summarizeReport } = await import('/assets/js/report-summary.mjs');
+      r.summary = await summarizeReport(buf); r.processingStatus = 'complete';
     } catch (e) {
-      r.processingStatus = 'failed'; r.summary = { headline: 'Processing failed: ' + e.message, findings: [], extracted: false };
+      r.processingStatus = 'failed';
+      r.summary = {
+        headline: e.code === 'report-page-limit'
+          ? e.message
+          : 'Could not process this PDF. Check that the file is available, valid and not password-protected, then retry.',
+        findings: [], excerpts: [], extracted: false,
+      };
     }
     r.processedAt = now();
     save();
@@ -294,19 +269,32 @@
   // Emails invitation and reset links created in this session, once they are in shared storage (the function
   // reads them from there). Tokens that came from storage or other people's sync were handled by whoever made them.
   const seenTokens = new Set();
+  const sentTokens = new Set();
+  const sendingTokens = new Map();
   function tokensOf(d) {
     const out = [];
-    ['hospitals', 'users', 'patients'].forEach((k) => (d[k] || []).forEach((x) => { if (x && x.email && x.invite && x.invite.token) out.push(['invite', x.invite.token, x.invite.expiresAt]); }));
+    ['admins', 'hospitals', 'users', 'patients'].forEach((k) => (d[k] || []).forEach((x) => { if (x && x.email && x.invite && x.invite.token) out.push(['invite', x.invite.token, x.invite.expiresAt]); }));
     ['admins', 'users', 'patients'].forEach((k) => (d[k] || []).forEach((x) => { if (x && x.email && x.reset && x.reset.token) out.push(['reset', x.reset.token, x.reset.expiresAt]); }));
     return out;
   }
   function markSeen(d) { tokensOf(d).forEach((t) => seenTokens.add(t[1])); }
+  function sendToken(kind, token, force = false) {
+    if (sentTokens.has(token) || (seenTokens.has(token) && !force)) return Promise.resolve({ ok: true });
+    if (sendingTokens.has(token)) return sendingTokens.get(token);
+    const sending = REMOTE.sendMail(kind, token)
+      .then(() => { seenTokens.add(token); sentTokens.add(token); return { ok: true }; })
+      .catch((e) => {
+        console.warn('CareVault email:', e.message);
+        return { ok: false, error: 'Email delivery failed (' + e.message + '). You can share the setup link below.' };
+      })
+      .finally(() => sendingTokens.delete(token));
+    sendingTokens.set(token, sending);
+    return sending;
+  }
   function mailPending() {
-    tokensOf(db).forEach(([kind, token, exp]) => {
-      if (seenTokens.has(token) || new Date(exp) <= new Date()) return;
-      seenTokens.add(token);
-      REMOTE.sendMail(kind, token).catch((e) => console.warn('CareVault email:', e.message));
-    });
+    return Promise.all(tokensOf(db)
+      .filter(([, token, exp]) => !seenTokens.has(token) && new Date(exp) > new Date())
+      .map(([kind, token]) => sendToken(kind, token)));
   }
 
   // Pick up changes other team members saved to shared storage.
@@ -479,6 +467,7 @@
     try {
       const s = JSON.parse(sessionStorage.getItem(SESSION_KEY));
       if (!s || Date.now() > s.exp) { sessionStorage.removeItem(SESSION_KEY); return null; }
+      if (s.role === 'sysadmin' && db && db.admins.some((a) => a.id === s.id && a.status === 'inactive')) { sessionStorage.removeItem(SESSION_KEY); return null; }
       return s;
     } catch (e) { return null; }
   };
@@ -510,6 +499,10 @@
         else log('login', 'failure', 'Login failed', a.email, hid);
         save();
         return bad;
+      }
+      if (sa && sa.status === 'inactive') {
+        log('login', 'failure', 'Inactive System Admin login blocked', sa.email);
+        return { ok: false, error: 'This System Admin account is inactive. Contact another System Admin.' };
       }
       if (hu) {
         const h = db.hospitals.find((x) => x.id === hid);
@@ -842,11 +835,92 @@
 
     hospitals: () => db.hospitals.slice(),
     hospital: (id) => db.hospitals.find((h) => h.id === id),
+    systemAdmins: () => db.admins.slice(),
+    requestAdminDeactivation(id) {
+      const session = currentAdmin();
+      const actor = session && db.admins.find((x) => x.id === session.id);
+      const target = db.admins.find((x) => x.id === id);
+      const active = (admin) => admin && admin.passwordHash && (!admin.status || admin.status === 'active');
+      if (!actor || !active(actor) || !active(target) || actor.id === target.id) return { ok: false, error: 'Only another active System Admin can request this deactivation.' };
+      if (target.deactivationRequest) return { ok: false, error: 'A deactivation request is already in progress.' };
+      const eligible = db.admins.filter((x) => x.id !== target.id && active(x));
+      const request = { requestedBy: actor.email, requestedAt: now(), approvals: [actor.email] };
+      target.deactivationRequest = request;
+      const required = Math.floor(eligible.length / 2) + 1;
+      const completed = request.approvals.filter((email) => eligible.some((x) => x.email === email)).length >= required;
+      if (completed) {
+        target.status = 'inactive';
+        target.deactivationRequest = null;
+        log('account', 'success', 'System Admin deactivated by majority approval: ' + target.email, actor.email);
+      } else {
+        log('account', 'warning', 'System Admin deactivation requested for ' + target.email, actor.email);
+      }
+      return { ok: true, admin: target, completed, approved: 1, required };
+    },
+    approveAdminDeactivation(id) {
+      const session = currentAdmin();
+      const actor = session && db.admins.find((x) => x.id === session.id);
+      const target = db.admins.find((x) => x.id === id);
+      const active = (admin) => admin && admin.passwordHash && (!admin.status || admin.status === 'active');
+      const request = target && target.deactivationRequest;
+      if (!actor || !active(actor) || !active(target) || !request || actor.id === target.id) return { ok: false, error: 'No eligible deactivation request is available.' };
+      const eligible = db.admins.filter((x) => x.id !== target.id && active(x));
+      if (!eligible.some((x) => x.id === actor.id)) return { ok: false, error: 'Only another active System Admin can approve this request.' };
+      if (!Array.isArray(request.approvals)) request.approvals = [];
+      if (request.approvals.includes(actor.email)) return { ok: false, error: 'You have already approved this request.' };
+      request.approvals.push(actor.email);
+      const required = Math.floor(eligible.length / 2) + 1;
+      const approved = request.approvals.filter((email) => eligible.some((x) => x.email === email)).length;
+      const completed = approved >= required;
+      if (completed) {
+        target.status = 'inactive';
+        target.deactivationRequest = null;
+        log('account', 'success', 'System Admin deactivated by majority approval: ' + target.email, actor.email);
+      } else {
+        log('account', 'success', 'System Admin deactivation approved for ' + target.email, actor.email);
+      }
+      return { ok: true, admin: target, completed, approved, required };
+    },
+    cancelAdminDeactivation(id) {
+      const session = currentAdmin();
+      const actor = session && db.admins.find((x) => x.id === session.id);
+      const target = db.admins.find((x) => x.id === id);
+      if (!actor || !target || !target.deactivationRequest || target.deactivationRequest.requestedBy !== actor.email) return { ok: false, error: 'Only the requesting System Admin can cancel this request.' };
+      target.deactivationRequest = null;
+      log('account', 'success', 'System Admin deactivation request cancelled for ' + target.email, actor.email);
+      return { ok: true, admin: target };
+    },
     users: () => db.users.slice(),
     usersOf: (hid) => db.users.filter((u) => u.hospitalId === hid),
     audit: () => db.audit.slice(),
     config: () => Object.assign({}, db.config),
 
+    addSystemAdmin(data) {
+      const name = String(data.name || '').trim();
+      const email = String(data.email || '').trim().toLowerCase();
+      if (!name || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { ok: false, error: 'Enter a name and a valid email address.' };
+      if ([].concat(...accountLists()).some((x) => norm(x.email) === email)) return { ok: false, error: 'An account with this email already exists.' };
+      let username = String(data.username || '').trim().toLowerCase();
+      if (username) {
+        if (!USERNAME_RE.test(username)) return { ok: false, error: 'Username must be 3–32 characters: letters, numbers, dot, dash or underscore.' };
+        if ([].concat(...accountLists()).some((x) => x.username === username)) return { ok: false, error: 'This username is already taken.' };
+      } else username = uniqueUsername(email.split('@')[0]);
+      const admin = {
+        id: uid('adm'), role: 'sysadmin', name, email, username, status: 'pending', passwordHash: null,
+        failed: 0, lockedUntil: 0, createdAt: now(),
+        invite: { token: randToken(), expiresAt: new Date(Date.now() + db.config.inviteExpiryDays * 864e5).toISOString() },
+      };
+      db.admins.push(admin);
+      log('account', 'success', 'System Admin invitation issued to ' + email, currentAdmin().email);
+      return { ok: true, admin };
+    },
+    resendSystemAdminInvite(id) {
+      const admin = db.admins.find((x) => x.id === id);
+      if (!admin || admin.status !== 'pending') return { ok: false, error: 'Only pending System Admin accounts can be re-invited.' };
+      admin.invite = { token: randToken(), expiresAt: new Date(Date.now() + db.config.inviteExpiryDays * 864e5).toISOString() };
+      log('account', 'success', 'System Admin invitation re-sent to ' + admin.email, currentAdmin().email);
+      return { ok: true, admin };
+    },
     addHospital(data) {
       const email = data.email.trim().toLowerCase();
       if (db.hospitals.some((h) => h.email === email)) return { ok: false, error: 'A hospital with this admin email already exists.' };
@@ -912,16 +986,20 @@
     },
     mailbox: () => (db.mailbox || []).filter((m) => new Date(m.expiresAt) > new Date()),
     async completeSetup(token, password) {
+      const admin = db.admins.find((x) => x.invite && x.invite.token === token);
       const h = db.hospitals.find((x) => x.invite && x.invite.token === token);
-      const u = h ? null : db.users.find((x) => x.invite && x.invite.token === token);
-      const p = h || u ? null : db.patients.find((x) => x.invite && x.invite.token === token);
-      const target = h || u || p;
+      const u = admin || h ? null : db.users.find((x) => x.invite && x.invite.token === token);
+      const p = admin || h || u ? null : db.patients.find((x) => x.invite && x.invite.token === token);
+      const target = admin || h || u || p;
       if (!token || !target) return { ok: false, error: 'Invalid or already used invitation link.' };
       if (new Date(target.invite.expiresAt) < new Date()) return { ok: false, error: 'This invitation has expired. Ask your administrator to resend it.' };
       if (password.length < db.config.minPasswordLength) return { ok: false, error: 'Password must be at least ' + db.config.minPasswordLength + ' characters.' };
       const hash = await hashPw(password);
       target.invite = null;
-      if (h) {
+      if (admin) {
+        admin.status = 'active'; admin.passwordHash = hash;
+        log('account', 'success', 'System Admin account activated', admin.email);
+      } else if (h) {
         h.status = 'active';
         db.users.push({ id: uid('usr'), name: h.adminName, email: h.email, username: h.username, role: 'Hospital Admin', department: 'Administration', phone: h.phone, hospitalId: h.id, status: 'active', lastLogin: null, createdAt: now(), invite: null, passwordHash: hash });
         log('account', 'success', 'Hospital admin set password; account activated', h.email, h.id);
@@ -1042,6 +1120,30 @@
       if (!Store.PCC_ROLES.includes(d.role)) return { ok: false, error: 'Not allowed to create this role.' };
       return rawAddStaff.call(Store, d);
     },
+    async sendInvitation(token) {
+      const s = currentAdmin();
+      const permitted = s && (
+        (s.role === 'sysadmin' && [db.admins, db.hospitals].some((list) => list.some((x) => x.invite && x.invite.token === token))) ||
+        (s.role === 'hospitaladmin' && db.users.some((x) => x.hospitalId === s.hospitalId && x.invite && x.invite.token === token)) ||
+        (s.role === 'pcc' && [db.users.filter((x) => Store.PCC_ROLES.includes(x.role)), db.patients].some((list) => list.some((x) => x.hospitalId === s.hospitalId && x.invite && x.invite.token === token)))
+      );
+      if (!permitted) return { ok: false, error: 'You are not allowed to send this invitation.' };
+      if (!REMOTE) return { ok: false, error: 'Email delivery and shared storage are not configured. The setup link only works in this browser.' };
+      if (!tokensOf(db).some(([kind, inviteToken]) => kind === 'invite' && inviteToken === token)) {
+        return { ok: false, error: 'The invitation could not be found. Share the setup link below manually.' };
+      }
+      try {
+        const merged = await REMOTE.push(db);
+        adopt(merged);
+      } catch (e) {
+        console.warn('CareVault shared storage:', e.message);
+        return { ok: false, error: 'The invitation could not be saved to shared storage, so no email was sent. The link may not work on another device.' };
+      }
+      if (!tokensOf(db).some(([kind, inviteToken]) => kind === 'invite' && inviteToken === token)) {
+        return { ok: false, error: 'The invitation could not be found. Share the setup link below manually.' };
+      }
+      return sendToken('invite', token, true);
+    },
     pccDeactivate(id) {
       const s = currentAdmin(); const u = Store.pccStaffMember(id);
       if (!u || u.status === 'suspended') return false;
@@ -1056,7 +1158,7 @@
   // Persist after every mutating call.
   const rawAddStaff = Store.addStaff; // unwrapped; PCC reaches it only through role-restricted pccAddStaff
   const GUARDS = {
-    sysadmin: ['addHospital', 'resendInvite', 'setStatus', 'updateHospital', 'setUserStatus', 'forceReset', 'saveConfig', 'logExport'],
+    sysadmin: ['addSystemAdmin', 'resendSystemAdminInvite', 'requestAdminDeactivation', 'approveAdminDeactivation', 'cancelAdminDeactivation', 'addHospital', 'resendInvite', 'setStatus', 'updateHospital', 'setUserStatus', 'forceReset', 'saveConfig', 'logExport'],
     hospitaladmin: ['updateProfile', 'addStaff', 'resendStaffInvite', 'setStaffStatus', 'updateStaff', 'staffForceReset'],
     pcc: ['registerPatient', 'resendPatientInvite', 'pccAddStaff', 'pccDeactivate'],
     doctor: ['doctorFindPatient', 'doctorSearchSecondary', 'doctorOpenPatient', 'doctorReport', 'doctorReportFile', 'doctorEmergencyAccess', 'doctorAccessHistory', 'doctorRecentPatients', 'doctorCreateDiagnosis', 'doctorAmendRecord', 'doctorMedicationCheck', 'doctorCreatePrescription'],
@@ -1065,7 +1167,7 @@
     patient: ['patientOverview', 'patientReportFile', 'patientUpdateContact', 'patientAccessHistory', 'patientEmergencyHistory', 'patientSetConsent', 'patientChangePassword'],
     lab: ['labFindPatient', 'labSearchSecondary', 'labUploadReport', 'labReports', 'labReport', 'labReportFile'],
   };
-  const OBJ_RESULT = ['pharmFindPatient', 'pharmSearchSecondary', 'pharmMedicationCheck', 'pharmCreatePrescription', 'nurseFindPatient', 'nurseSearchSecondary', 'nurseRecordVitals', 'patientReportFile', 'patientUpdateContact', 'patientSetConsent', 'patientChangePassword', 'addHospital', 'addStaff', 'resendInvite', 'resendStaffInvite', 'registerPatient', 'resendPatientInvite', 'pccAddStaff',
+  const OBJ_RESULT = ['pharmFindPatient', 'pharmSearchSecondary', 'pharmMedicationCheck', 'pharmCreatePrescription', 'nurseFindPatient', 'nurseSearchSecondary', 'nurseRecordVitals', 'patientReportFile', 'patientUpdateContact', 'patientSetConsent', 'patientChangePassword', 'addSystemAdmin', 'resendSystemAdminInvite', 'requestAdminDeactivation', 'approveAdminDeactivation', 'cancelAdminDeactivation', 'addHospital', 'addStaff', 'resendInvite', 'resendStaffInvite', 'registerPatient', 'resendPatientInvite', 'pccAddStaff', 'sendInvitation',
     'doctorFindPatient', 'doctorSearchSecondary', 'doctorReport', 'doctorReportFile', 'doctorEmergencyAccess', 'doctorCreateDiagnosis', 'doctorAmendRecord', 'doctorMedicationCheck', 'doctorCreatePrescription', 'labFindPatient', 'labSearchSecondary', 'labUploadReport', 'labReportFile'];
   const LIST_RESULT = ['pharmRecentPatients', 'pharmRecentEntries', 'nurseRecentPatients', 'nurseRecentEntries', 'patientAccessHistory', 'patientEmergencyHistory', 'doctorAccessHistory', 'doctorRecentPatients', 'labReports'];
   const NEED = {};

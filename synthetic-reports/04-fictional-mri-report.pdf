@@ -1,0 +1,45 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1148 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional MRI Report) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-MRI-004. Fictional patient: Sample Person 004.) Tj ET
+BT /F1 9 Tf 48 714 Td (Study date: 2026-04-21. Examination: MRI of a fictional body region.) Tj ET
+BT /F1 9 Tf 48 699 Td (Comparison: no prior examination provided.) Tj ET
+BT /F1 9 Tf 48 684 Td (Finding 1: a 6 mm focus is described as nonspecific in the source.) Tj ET
+BT /F1 9 Tf 48 669 Td (Finding 2: no acute abnormality is identified in the source report.) Tj ET
+BT /F1 9 Tf 48 654 Td (Finding 3: motion artifact mildly limits assessment of the lower images.) Tj ET
+BT /F1 9 Tf 48 639 Td (Impression: nonspecific 6 mm focus; correlate with the stated history.) Tj ET
+BT /F1 9 Tf 48 624 Td (The source does not provide a history or a follow-up interval.) Tj ET
+BT /F1 9 Tf 48 609 Td (Do not convert "nonspecific" into a diagnosis or reassurance.) Tj ET
+BT /F1 9 Tf 48 594 Td (All details are invented for software testing only.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 1.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000139 00000 n 
+0000000236 00000 n 
+0000000362 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1562
+%%EOF

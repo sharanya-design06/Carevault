@@ -1,0 +1,46 @@
+%PDF-1.4
+%Synthetic test fixture
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [4 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>
+endobj
+4 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 3 0 R >> >> /Contents 5 0 R >>
+endobj
+5 0 obj
+<< /Length 1255 >>
+stream
+BT /F1 8 Tf 48 780 Td (SYNTHETIC TEST FIXTURE - FICTIONAL DATA ONLY - NOT FOR CLINICAL USE) Tj ET
+BT /F1 13 Tf 48 752 Td (Fictional Laboratory Report) Tj ET
+BT /F1 9 Tf 48 729 Td (Fixture ID: SIM-LAB-001. All names, dates, and results below are invented.) Tj ET
+BT /F1 9 Tf 48 714 Td (Collection date: 2026-01-15. Specimen: synthetic fasting blood sample.) Tj ET
+BT /F1 9 Tf 48 699 Td (Glucose: 118 mg/dL. Reference: 70-99 mg/dL. Flag: High.) Tj ET
+BT /F1 9 Tf 48 684 Td (Hemoglobin A1c: 6.1%. Reference: below 5.7%. Flag: High.) Tj ET
+BT /F1 9 Tf 48 669 Td (LDL cholesterol: 162 mg/dL. Reference: below 100 mg/dL. Flag: High.) Tj ET
+BT /F1 9 Tf 48 654 Td (HDL cholesterol: 38 mg/dL. Reference: above 40 mg/dL. Flag: Low.) Tj ET
+BT /F1 9 Tf 48 639 Td (Creatinine: 0.9 mg/dL. Reference: 0.6-1.2 mg/dL. Flag: Normal.) Tj ET
+BT /F1 9 Tf 48 624 Td (ALT: 52 U/L. Reference: 7-35 U/L. Flag: High.) Tj ET
+BT /F1 9 Tf 48 609 Td (Vitamin D: 18 ng/mL. Reference: 30-100 ng/mL. Flag: Low.) Tj ET
+BT /F1 9 Tf 48 594 Td (Sodium, potassium, calcium, AST, and triglycerides: not reported.) Tj ET
+BT /F1 9 Tf 48 579 Td (Source comment: clinical correlation advised. No diagnosis is assigned here.) Tj ET
+BT /F1 8 Tf 48 28 Td (Fictional test data only. Page 1 of 1.) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f 
+0000000033 00000 n 
+0000000082 00000 n 
+0000000139 00000 n 
+0000000236 00000 n 
+0000000362 00000 n 
+trailer
+<< /Size 6 /Root 1 0 R >>
+startxref
+1669
+%%EOF

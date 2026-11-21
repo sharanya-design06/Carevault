@@ -380,3 +380,4 @@ details summary { color: var(--pri); }
 	.kv dd { margin-bottom: 8px; }
 	.toolbar input, .toolbar select { width: 100%; }
 }
+.secure-ai-frame { display: block; width: 100%; min-height: 80vh; border: 1px solid var(--bd); border-radius: 8px; background: var(--bg); }

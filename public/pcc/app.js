@@ -1,4 +1,5 @@
 (function () {
+  if (window.FirebaseSession && window.FirebaseSession.enabled) return; // pcc/secure.js serves Firebase sessions
   const { $app, S, esc, fmt, badge, toast, logTable, guard, refocus } = window.UI;
 
   const SLUG = { doctor: 'Doctor', nurse: 'Nurse', 'lab-technician': 'Lab Technician', pharmacist: 'Pharmacist' };
@@ -53,13 +54,13 @@
       <div class="card">${patientTable(rows)}<p class="mut">${rows.length} patient(s) registered through your hospital.</p></div>`);
   }
 
-  function registerView(err, created) {
+  function registerView(err, created, inviteError) {
     if (created) {
       return shell('patients/new', `<h1>Patient registered</h1><div class="card">
         <p><b>${esc(created.name)}</b> was registered. Health Record ID (HRID):</p>
         <p class="big"><code>${esc(created.hrid)}</code></p>
         ${created.invite ? `<p>An account invitation was issued to <b>${esc(created.email)}</b>, valid until ${fmt(created.invite.expiresAt)}. The patient sets their own password.</p>
-          <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>`
+          ${window.UI.invitationStatus(inviteError)}<div class="linkbox">${esc(S.inviteLink(created))}</div>`
           : '<p class="mut">No email was provided, so no patient account was created. The patient is identified by HRID only.</p>'}
         <p class="actions"><a class="btn primary" href="#/patients/${esc(created.id)}">View details</a><a class="btn" href="#/patients/new">Register another</a></p></div>`);
     }
@@ -92,7 +93,7 @@
       ${p.status === 'pending' ? `<div class="card"><h2>Account invitation</h2><button data-action="resendPatient" data-id="${esc(id)}">Regenerate / resend invitation</button><div class="linkbox">${esc(S.inviteLink(p))}</div></div>` : ''}</div>`);
   }
 
-  function addStaffView(slug, err, created) {
+  function addStaffView(slug, err, created, inviteError) {
     const role = SLUG[slug];
     if (!role) return shell('', '<h1>Page not found</h1>');
     const active = 'staff/new/' + slug;
@@ -100,7 +101,8 @@
       return shell(active, `<h1>${esc(role)} account created</h1><div class="card">
         <p><b>${esc(created.name)}</b> was created with status ${badge('pending')}. A password-setup invitation was issued to <b>${esc(created.email)}</b>, valid until ${fmt(created.invite.expiresAt)}.
         The staff member sets their own password.</p>
-        <p class="mut">The link is also emailed to the registered address. You can share it manually too:</p><div class="linkbox">${esc(S.inviteLink(created))}</div>
+        ${window.UI.invitationStatus(inviteError)}
+        <div class="linkbox">${esc(S.inviteLink(created))}</div>
         <p class="actions"><a class="btn primary" href="#/staff">Staff list</a><a class="btn" href="#/${active}">Create another</a></p></div>`);
     }
     return shell(active, `<h1>Create ${esc(role)} Account</h1><form class="card" data-form="addStaff"><input type="hidden" name="role" value="${esc(role)}">
@@ -144,28 +146,41 @@
     $app.innerHTML = html;
   }
 
-  document.addEventListener('submit', (e) => {
+  document.addEventListener('submit', async (e) => {
     const form = e.target.closest('form[data-form]');
     if (!form) return;
     e.preventDefault();
     const d = Object.fromEntries(new FormData(form));
     if (form.dataset.form === 'patient') {
+      form.querySelector('button[type="submit"]').disabled = true;
       const r = S.registerPatient(d);
-      if (r.ok) $app.innerHTML = registerView('', r.patient); else { flashErr = r.error; render(); }
+      if (r.ok) {
+        const delivery = r.patient.invite ? await S.sendInvitation(r.patient.invite.token) : { ok: true };
+        $app.innerHTML = registerView('', r.patient, delivery.ok ? '' : delivery.error);
+      } else { flashErr = r.error; render(); }
     } else if (form.dataset.form === 'addStaff') {
+      form.querySelector('button').disabled = true;
       const r = S.pccAddStaff(d);
       const slug = Object.keys(SLUG).find((k) => SLUG[k] === d.role);
-      if (r.ok) $app.innerHTML = addStaffView(slug, '', r.user); else { flashErr = r.error; render(); }
+      if (r.ok) {
+        const delivery = await S.sendInvitation(r.user.invite.token);
+        $app.innerHTML = addStaffView(slug, '', r.user, delivery.ok ? '' : delivery.error);
+      } else { flashErr = r.error; render(); }
     }
   });
 
-  document.addEventListener('click', (e) => {
+  document.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-action]');
     if (!b) return;
     const id = b.dataset.id;
     switch (b.dataset.action) {
       case 'logout': S.logout(); location.href = '/'; break;
-      case 'resendPatient': S.resendPatientInvite(id); toast('Invitation regenerated'); render(); break;
+      case 'resendPatient': {
+        b.disabled = true;
+        const r = S.resendPatientInvite(id);
+        const delivery = r.ok ? await S.sendInvitation(r.patient.invite.token) : r;
+        render(); toast(delivery.ok ? 'Invitation email sent' : delivery.error); break;
+      }
       case 'deactivate': if (confirm('Deactivate this staff account? They will lose access immediately.')) { S.pccDeactivate(id); toast('Staff deactivated'); render(); } break;
     }
   });
