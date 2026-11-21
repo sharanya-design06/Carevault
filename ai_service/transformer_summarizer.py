@@ -7,6 +7,9 @@ from transformers import AutoModel, AutoModelForSeq2SeqLM, AutoTokenizer
 
 from ai_service.train_summarizer import split_sentences
 
+BIOBERT_CHECKPOINT = "dmis-lab/biobert-base-cased-v1.2"
+T5_CHECKPOINT = "google/flan-t5-small"
+
 
 class BiobertT5Summarizer:
     def __init__(self, biobert, biobert_tokenizer, t5, t5_tokenizer):
@@ -81,4 +84,12 @@ def load_biobert_t5_summarizer(model_dir: Path) -> BiobertT5Summarizer:
     biobert = AutoModel.from_pretrained(biobert_dir, local_files_only=True)
     t5_tokenizer = AutoTokenizer.from_pretrained(t5_dir, local_files_only=True)
     t5 = AutoModelForSeq2SeqLM.from_pretrained(t5_dir, local_files_only=True)
+    return BiobertT5Summarizer(biobert, biobert_tokenizer, t5, t5_tokenizer)
+
+
+def load_pretrained_biobert_t5_summarizer() -> BiobertT5Summarizer:
+    biobert_tokenizer = AutoTokenizer.from_pretrained(BIOBERT_CHECKPOINT)
+    biobert = AutoModel.from_pretrained(BIOBERT_CHECKPOINT)
+    t5_tokenizer = AutoTokenizer.from_pretrained(T5_CHECKPOINT)
+    t5 = AutoModelForSeq2SeqLM.from_pretrained(T5_CHECKPOINT)
     return BiobertT5Summarizer(biobert, biobert_tokenizer, t5, t5_tokenizer)
