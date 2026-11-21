@@ -1,0 +1,198 @@
+{
+  "reportMetadata": {
+    "generatedAt": "2026-11-21T06:27:21.152518+00:00",
+    "patientName": "Anna Rivera",
+    "patientID": "PAT-2024-00547",
+    "reportType": "Comprehensive Health Risk Assessment",
+    "clinicalValidation": false,
+    "disclaimer": "This report is for research/demo purposes only. Not validated for clinical use."
+  },
+  "patientInformation": {
+    "name": "Anna Rivera",
+    "age": 58,
+    "gender": "Female",
+    "bloodType": "O+",
+    "dateOfBirth": "1966-03-15"
+  },
+  "vitalSigns": {
+    "age": 58,
+    "systolicBP": 148,
+    "diastolicBP": 92,
+    "heartRate": 82,
+    "temperature": 98.6,
+    "respiratoryRate": 18,
+    "oxygenSaturation": 97
+  },
+  "labResults": {
+    "glucose": 185,
+    "HbA1c": 8.2,
+    "totalCholesterol": 245,
+    "LDLCholesterol": 165,
+    "HDLCholesterol": 35,
+    "triglycerides": 220,
+    "creatinine": 1.4,
+    "eGFR": 45,
+    "hemoglobin": 13.2,
+    "BMI": 32.5
+  },
+  "currentMedications": [
+    "Metformin 500mg BID",
+    "Lisinopril 10mg OD",
+    "Atorvastatin 20mg OD",
+    "Aspirin 81mg OD"
+  ],
+  "diseaseRiskAssessment": {
+    "diabetes": {
+      "condition": "diabetes",
+      "riskScore": 90.85,
+      "riskLevel": "High",
+      "threshold": 75.03,
+      "prediction": "positive",
+      "model": "logistic_regression",
+      "metrics": {
+        "accuracy": 0.7273,
+        "precision": 0.6579,
+        "recall": 0.463,
+        "f1": 0.5435,
+        "aucRoc": 0.8126,
+        "averagePrecision": 0.6727
+      },
+      "populationLimitation": "Pima Indians benchmark; all records are women aged 21 or older.",
+      "clinicalUse": false
+    },
+    "cardiac": {
+      "condition": "cardiac",
+      "riskScore": 33.67,
+      "riskLevel": "Low",
+      "threshold": 75.19,
+      "prediction": "negative",
+      "model": "logistic_regression",
+      "metrics": {
+        "accuracy": 0.7705,
+        "precision": 0.88,
+        "recall": 0.6667,
+        "f1": 0.7586,
+        "aucRoc": 0.8712,
+        "averagePrecision": 0.8851
+      },
+      "populationLimitation": "Small historic Cleveland cohort; representativeness for current patients is unknown.",
+      "clinicalUse": false
+    },
+    "liver": {
+      "condition": "liver",
+      "riskScore": 21.6,
+      "riskLevel": "Low",
+      "threshold": 71.15,
+      "prediction": "negative",
+      "model": "xgboost",
+      "metrics": {
+        "accuracy": 0.6496,
+        "precision": 0.9038,
+        "recall": 0.5663,
+        "f1": 0.6963,
+        "aucRoc": 0.7743,
+        "averagePrecision": 0.9078
+      },
+      "populationLimitation": "Indian Liver Patient Dataset; representativeness outside its source cohort is unknown.",
+      "clinicalUse": false
+    },
+    "hypertension": {
+      "condition": "hypertension",
+      "riskScore": 55,
+      "riskLevel": "Moderate",
+      "riskFactors": [
+        "Current elevated blood pressure (Stage 2 Hypertension)",
+        "Obesity (BMI > 30)"
+      ],
+      "model": "Rule-based assessment (ML model not available)",
+      "populationLimitation": "General population"
+    }
+  },
+  "allergyAlerts": {
+    "totalAlergies": 5,
+    "alerts": [
+      {
+        "allergen": "Penicillin",
+        "reaction": "Severe rash and angioedema",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Penicillin and cross-reactive substances"
+      },
+      {
+        "allergen": "Sulfonamides",
+        "reaction": "Steven-Johnson Syndrome (historical)",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Sulfonamides and cross-reactive substances"
+      },
+      {
+        "allergen": "Shellfish",
+        "reaction": "Throat swelling and difficulty breathing",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Shellfish and cross-reactive substances"
+      },
+      {
+        "allergen": "NSAIDs",
+        "reaction": "GI bleeding (prior episode)",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of NSAIDs and cross-reactive substances"
+      },
+      {
+        "allergen": "Metformin",
+        "reaction": "Gastrointestinal upset",
+        "severity": "Moderate",
+        "alertType": "Warning",
+        "recommendedAction": "Avoid all forms of Metformin and cross-reactive substances"
+      }
+    ],
+    "criticalAlerts": [
+      {
+        "allergen": "Penicillin",
+        "reaction": "Severe rash and angioedema",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Penicillin and cross-reactive substances"
+      },
+      {
+        "allergen": "Sulfonamides",
+        "reaction": "Steven-Johnson Syndrome (historical)",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Sulfonamides and cross-reactive substances"
+      },
+      {
+        "allergen": "Shellfish",
+        "reaction": "Throat swelling and difficulty breathing",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of Shellfish and cross-reactive substances"
+      },
+      {
+        "allergen": "NSAIDs",
+        "reaction": "GI bleeding (prior episode)",
+        "severity": "Severe",
+        "alertType": "Critical",
+        "recommendedAction": "Avoid all forms of NSAIDs and cross-reactive substances"
+      }
+    ],
+    "warnings": [
+      {
+        "allergen": "Metformin",
+        "reaction": "Gastrointestinal upset",
+        "severity": "Moderate",
+        "alertType": "Warning",
+        "recommendedAction": "Avoid all forms of Metformin and cross-reactive substances"
+      }
+    ]
+  },
+  "summaryReport": "CLINICAL SUMMARY FOR ANNA RIVERA\n\nReport generated on 2026-11-21 11:57:21 UTC\n\n============================================================\n\nDISEASE RISK ASSESSMENT:\n------------------------------------------------------------\n[H] DIABETES        - High       Risk (90.85%)\n[L] CARDIAC         - Low        Risk (33.67%)\n[L] LIVER           - Low        Risk (21.6%)\n[M] HYPERTENSION    - Moderate   Risk (55%)\n\n------------------------------------------------------------\nHIGH RISK CONDITIONS: 1\nMODERATE RISK CONDITIONS: 1\n\nALLERGY ALERTS: WARNING - 5 documented allergy(ies)\n  - Penicillin: Severe rash and angioedema\n  - Sulfonamides: Steven-Johnson Syndrome (historical)\n  - Shellfish: Throat swelling and difficulty breathing\n  - NSAIDs: GI bleeding (prior episode)\n  - Metformin: Gastrointestinal upset\n\n------------------------------------------------------------\n\nKEY FINDINGS:\n\u2022 Comprehensive disease risk assessment completed\n\u2022 Critical allergy information documented\n\u2022 Patient data analyzed across multiple disease models\n\n!!! DISCLAIMER: This is a research/demonstration report.\nNot validated for clinical diagnosis or treatment decisions.\nConsult qualified healthcare providers for medical advice.",
+  "recommendations": [
+    "[DIABETES] Schedule HbA1c test and glucose monitoring. Consider endocrinology referral.",
+    "[ALLERGIES] Document all 5 allergies in EHR. Avoid cross-reactive substances.",
+    "[GENERAL] Lifestyle modifications (diet, exercise) for all identified risk factors.",
+    "[FOLLOW-UP] Schedule follow-up appointments in 1-3 months.",
+    "[MEDICATION REVIEW] Verify all medications are appropriate given identified risks and allergies."
+  ]
+}
