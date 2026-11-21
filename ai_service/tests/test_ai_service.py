@@ -1,4 +1,10 @@
+import asyncio
+import sys
+import tempfile
+import types
 import unittest
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 from fastapi import HTTPException
 import pandas as pd
@@ -46,6 +52,94 @@ class AiServiceTests(unittest.TestCase):
             self.assertTrue(any("research-only" in item for item in result["limitations"]))
         finally:
             service.transformer_summarizer = original_summarizer
+            service.summarizer_vectorizer = original_vectorizer
+
+    def test_identifies_dynamic_pretrained_summarizer(self):
+        original_summarizer, original_mode, original_vectorizer = (
+            service.transformer_summarizer,
+            service.transformer_summarizer_mode,
+            service.summarizer_vectorizer,
+        )
+        try:
+            class StubSummarizer:
+                def summarize(self, text):
+                    return "Generated pretrained summary."
+
+            service.transformer_summarizer = StubSummarizer()
+            service.transformer_summarizer_mode = "local-biobert-flan-t5-pretrained-v1"
+            service.summarizer_vectorizer = None
+            result = service.summarize_text("A clinical report sentence.", 1)
+            self.assertEqual(result["summaryText"], "Generated pretrained summary.")
+            self.assertEqual(result["model"], "local-biobert-flan-t5-pretrained-v1")
+            self.assertEqual(service.health()["summaryMode"], "local-biobert-flan-t5-pretrained")
+        finally:
+            service.transformer_summarizer = original_summarizer
+            service.transformer_summarizer_mode = original_mode
+            service.summarizer_vectorizer = original_vectorizer
+
+    def test_loads_pretrained_summarizer_when_finetuned_weights_are_missing(self):
+        original_summarizer, original_mode, original_error = (
+            service.transformer_summarizer,
+            service.transformer_summarizer_mode,
+            service.summary_load_error,
+        )
+        try:
+            fake_module = types.ModuleType("ai_service.transformer_summarizer")
+            fake_module.load_pretrained_biobert_t5_summarizer = Mock(return_value=object())
+
+            async def startup():
+                async with service.lifespan(None):
+                    pass
+
+            with tempfile.TemporaryDirectory() as model_dir:
+                with (
+                    patch.object(service, "MODEL_DIR", Path(model_dir)),
+                    patch.object(service, "load_interactions"),
+                    patch.dict(sys.modules, {"ai_service.transformer_summarizer": fake_module}),
+                ):
+                    asyncio.run(startup())
+
+            fake_module.load_pretrained_biobert_t5_summarizer.assert_called_once_with()
+            self.assertEqual(service.health()["summaryMode"], "local-biobert-flan-t5-pretrained")
+            self.assertIsNone(service.health()["summaryLoadError"])
+        finally:
+            service.transformer_summarizer = original_summarizer
+            service.transformer_summarizer_mode = original_mode
+            service.summary_load_error = original_error
+
+    def test_keeps_service_available_when_pretrained_summarizer_is_unavailable(self):
+        original_summarizer, original_mode, original_error, original_vectorizer = (
+            service.transformer_summarizer,
+            service.transformer_summarizer_mode,
+            service.summary_load_error,
+            service.summarizer_vectorizer,
+        )
+        try:
+            fake_module = types.ModuleType("ai_service.transformer_summarizer")
+            fake_module.load_pretrained_biobert_t5_summarizer = Mock(
+                side_effect=ImportError("optional dependencies are missing"),
+            )
+
+            async def startup():
+                async with service.lifespan(None):
+                    pass
+
+            with tempfile.TemporaryDirectory() as model_dir:
+                with (
+                    patch.object(service, "MODEL_DIR", Path(model_dir)),
+                    patch.object(service, "load_interactions"),
+                    patch.dict(sys.modules, {"ai_service.transformer_summarizer": fake_module}),
+                ):
+                    asyncio.run(startup())
+
+            status = service.health()
+            self.assertEqual(status["summaryMode"], "local-structured-extraction")
+            self.assertFalse(status["summaryModel"])
+            self.assertIn("Pretrained BioBERT/Flan-T5 unavailable", status["summaryLoadError"])
+        finally:
+            service.transformer_summarizer = original_summarizer
+            service.transformer_summarizer_mode = original_mode
+            service.summary_load_error = original_error
             service.summarizer_vectorizer = original_vectorizer
 
     def test_interactions_report_unknown_source_severity(self):

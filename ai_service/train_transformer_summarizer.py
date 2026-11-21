@@ -14,13 +14,15 @@ from transformers import (
 )
 
 from ai_service.train_summarizer import rouge_scores
-from ai_service.transformer_summarizer import BiobertT5Summarizer
+from ai_service.transformer_summarizer import (
+    BIOBERT_CHECKPOINT,
+    T5_CHECKPOINT,
+    BiobertT5Summarizer,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA_PATH = ROOT / "mtsamples.csv"
 MODEL_DIR = Path(__file__).resolve().parent / "models" / "biobert_t5_summarizer"
-BIOBERT_CHECKPOINT = "dmis-lab/biobert-base-cased-v1.2"
-T5_CHECKPOINT = "google/flan-t5-small"
 RANDOM_STATE = 42
 TEST_SIZE = 0.2
 INPUT_MAX_LENGTH = 512

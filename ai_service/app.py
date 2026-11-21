@@ -1,5 +1,6 @@
 import csv
 import io
+import logging
 import math
 import os
 import re
@@ -27,6 +28,8 @@ MODEL_DIR = Path(os.environ.get("CAREVAULT_MODEL_DIR", ROOT / "ai_service" / "mo
 INTERACTION_CSV = Path(os.environ.get("CAREVAULT_INTERACTION_CSV", ROOT / "db_drug_interactions.csv"))
 summarizer_vectorizer = None
 transformer_summarizer = None
+transformer_summarizer_mode = None
+summary_load_error = None
 SEVERITY_EXAMPLES = {
     ("warfarin", "ibuprofen"): ("major", "Bleeding risk is significantly increased."),
     ("warfarin", "naproxen"): ("major", "Bleeding risk is significantly increased."),
@@ -181,7 +184,7 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
         highlights = ["No matching conclusion or findings text was detected."]
     if transformer_summarizer:
         summary_text = transformer_summarizer.summarize(text)
-        summary_model = "local-biobert-t5-finetuned-v1"
+        summary_model = transformer_summarizer_mode or "local-biobert-t5-finetuned-v1"
     elif summarizer_vectorizer:
         summary_text = extractive_summary(text, summarizer_vectorizer)
         summary_model = "local-tfidf-extractive-v1"
@@ -274,8 +277,13 @@ def load_model(condition: str) -> dict[str, Any]:
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     global summarizer_vectorizer, transformer_summarizer
+    global transformer_summarizer_mode, summary_load_error
     load_interactions()
+    transformer_summarizer = None
+    transformer_summarizer_mode = None
+    summary_load_error = None
     transformer_path = MODEL_DIR / "biobert_t5_summarizer"
+
     if transformer_path.is_dir():
         try:
             from ai_service.transformer_summarizer import load_biobert_t5_summarizer
@@ -283,6 +291,20 @@ async def lifespan(_: FastAPI):
             transformer_summarizer = load_biobert_t5_summarizer(transformer_path)
         except (ImportError, OSError, ValueError, RuntimeError) as error:
             raise RuntimeError("The local BioBERT/T5 summarizer could not be loaded.") from error
+        transformer_summarizer_mode = "local-biobert-t5-finetuned-v1"
+    else:
+        try:
+            from ai_service.transformer_summarizer import load_pretrained_biobert_t5_summarizer
+
+            transformer_summarizer = load_pretrained_biobert_t5_summarizer()
+            transformer_summarizer_mode = "local-biobert-flan-t5-pretrained-v1"
+        except (ImportError, OSError, ValueError, RuntimeError) as error:
+            transformer_summarizer = None
+            summary_load_error = (
+                "Pretrained BioBERT/Flan-T5 unavailable. Install "
+                "ai_service/requirements-transformer.txt and allow checkpoint downloads."
+            )
+            logging.getLogger(__name__).warning("%s: %s", summary_load_error, error)
     summarizer_path = MODEL_DIR / "summarizer.joblib"
     if summarizer_path.is_file() and transformer_summarizer is None:
         try:
@@ -326,8 +348,9 @@ def health():
         },
         "hypertensionModel": False,
         "summaryModel": transformer_summarizer is not None or summarizer_vectorizer is not None,
+        "summaryLoadError": summary_load_error,
         "summaryMode": (
-            "local-biobert-t5-finetuned" if transformer_summarizer
+            transformer_summarizer_mode.removesuffix("-v1") if transformer_summarizer_mode
             else "local-tfidf-extractive" if summarizer_vectorizer
             else "local-structured-extraction"
         ),
