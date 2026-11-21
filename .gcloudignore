@@ -1,0 +1,8 @@
+.gcloudignore
+.git
+.gitignore
+.firebase/
+node_modules/
+**/__pycache__/
+ai_service/.venv/
+ai_service/data/

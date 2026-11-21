@@ -232,9 +232,72 @@
         : 'Indian Liver Patient Dataset; representativeness outside its source cohort is unknown.';
     return `<p class="mut" data-model-population><b>Dataset scope:</b> ${esc(text)}</p>`;
   }
+
+  function renderFullReportForDoctor(r, hrid) {
+    const riskColor = (level) => ({
+      'High': '#d9534f',
+      'Moderate': '#f0ad4e',
+      'Low': '#5cb85c'
+    }[level] || '#999');
+
+    return `<div class="report-container">
+      <h3>Patient: ${esc(hrid)}</h3>
+      <p>Generated: ${new Date(r.reportMetadata.generatedAt).toLocaleDateString()}</p>
+      
+      <h4>Disease Risk Assessment</h4>
+      <div class="risk-grid">
+        ${Object.entries(r.diseaseRiskAssessment).filter(([_, v]) => !v.error).map(([condition, risk]) => {
+          const riskLevel = risk.riskLevel;
+          const bgColor = riskColor(riskLevel);
+          return `<div class="risk-card" style="border-left: 4px solid ${bgColor}; padding: 12px; margin: 8px 0;">
+            <strong>${esc(condition.charAt(0).toUpperCase() + condition.slice(1))}</strong><br>
+            <span style="font-size: 20px; font-weight: bold; color: ${bgColor}">${risk.riskScore}%</span><br>
+            <span style="color: ${bgColor}; font-weight: bold">${esc(riskLevel)} Risk</span>
+            ${risk.riskFactors ? `<br><small><strong>Factors:</strong> ${risk.riskFactors.map(f => esc(f)).join(', ')}</small>` : ''}
+          </div>`;
+        }).join('')}
+      </div>
+      
+      <h4>Critical Allergy Alerts (${r.allergyAlerts.criticalAlerts.length})</h4>
+      ${r.allergyAlerts.criticalAlerts.length ? `
+        <div class="alert danger" style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 12px; margin: 8px 0; border-radius: 4px;">
+          ${r.allergyAlerts.criticalAlerts.map(a => `<div style="margin: 8px 0;"><strong>⚠️ ${esc(a.allergen)}</strong><br>
+            Reaction: ${esc(a.reaction)}<br>
+            Severity: <span style="color: #721c24; font-weight: bold">${esc(a.severity)}</span><br>
+            Action: ${esc(a.recommendedAction)}</div>`).join('')}
+        </div>
+      ` : '<p class="mut">No critical allergies.</p>'}
+      
+      <h4>Warnings (${r.allergyAlerts.warnings.length})</h4>
+      ${r.allergyAlerts.warnings.length ? `
+        <div class="alert warn" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; margin: 8px 0; border-radius: 4px;">
+          ${r.allergyAlerts.warnings.map(a => `<div style="margin: 8px 0;"><strong>⚠️ ${esc(a.allergen)}</strong><br>
+            Reaction: ${esc(a.reaction)}<br>
+            Severity: ${esc(a.severity)}<br>
+            Action: ${esc(a.recommendedAction)}</div>`).join('')}
+        </div>
+      ` : ''}
+      
+      <h4>Clinical Summary</h4>
+      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto;">${esc(r.summaryReport)}</pre>
+      
+      <h4>Recommendations</h4>
+      <ul>
+        ${r.recommendations.map(rec => `<li>${esc(rec)}</li>`).join('')}
+      </ul>
+      
+      <p class="mut"><strong>Disclaimer:</strong> ${esc(r.reportMetadata.disclaimer)}</p>
+    </div>`;
+  }
+
   function riskTab(d) {
-    return `<div class="card"><h2>Disease risk dashboard</h2>${riskBars(d, true)}</div>
-      <div class="card"><h2>Research model assessment</h2>
+    return `<div class="card"><h2>Disease Risk Dashboard</h2>${riskBars(d, true)}</div>
+      <div class="card"><h2>Comprehensive Health Report</h2>
+        <p>AI-generated health risk assessment including disease predictions, allergy alerts, and clinical recommendations.</p>
+        <button data-action="loadFullReport" data-hrid="${esc(d.patient.hrid)}" class="primary">Load Full Report</button>
+        <div id="full-report" aria-live="polite"></div>
+      </div>
+      <div class="card"><h2>Research Model Assessment</h2>
       <p class="mut">Optional locally trained research models. They return an uncalibrated dataset score, not a diagnosis or clinical risk. Confirm every input against the source record. No patient identifier is sent to the local service.</p>
       <form data-form="ai-predict" data-hrid="${esc(d.patient.hrid)}"><label>Model<select name="condition" data-model-condition><option value="diabetes">Diabetes</option><option value="cardiac">Heart disease</option><option value="liver">Liver disease</option></select></label>
       <div class="grid" data-model-fields>${modelFields('diabetes', d)}</div>${modelPopulationNote('diabetes')}<p><button class="primary" type="submit">Run local research model</button></p></form>
@@ -361,6 +424,20 @@
       const url = URL.createObjectURL(r.blob);
       window.open(url, '_blank', 'noopener');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } else if (b.dataset.action === 'loadFullReport') {
+      const hrid = b.dataset.hrid;
+      const output = b.parentElement.querySelector('#full-report');
+      b.disabled = true;
+      output.innerHTML = alertBox('info', 'Loading comprehensive health report…');
+      try {
+        const response = await fetch('/getPatientReport?patientId=' + encodeURIComponent(hrid));
+        if (!response.ok) throw new Error('Failed to load report');
+        const reportData = await response.json();
+        output.innerHTML = renderFullReportForDoctor(reportData, hrid);
+      } catch (err) {
+        output.innerHTML = alertBox('danger', 'Failed to load report: ' + esc(err.message));
+      }
+      b.disabled = false;
     }
   });
 

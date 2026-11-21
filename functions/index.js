@@ -8,10 +8,18 @@ const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
 
 admin.initializeApp();
+
+// Import patient report endpoints
+const patientReport = require('./patient-report');
 const SMTP_USER = defineSecret('SMTP_USER');
 const SMTP_PASS = defineSecret('SMTP_PASS');
 const SITE = 'https://care-vault-project.web.app';
 const COLLECTIONS = ['hospitals', 'users', 'patients', 'admins'];
+
+// Export patient report functions
+exports.getPatientReport = patientReport.getPatientReport;
+exports.getPatientRisk = patientReport.getPatientRisk;
+exports.getPatientAllergies = patientReport.getPatientAllergies;
 
 async function readList(key) {
   const snap = await admin.firestore().doc('carevault/' + key).get();
