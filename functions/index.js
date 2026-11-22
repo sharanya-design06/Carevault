@@ -2,16 +2,41 @@
  * Emails invitation and password-reset links. The browser only sends a token; the function finds the account
  * that owns it in Firestore and mails the address registered there, so callers cannot choose the recipient or link.
  */
-const { onRequest } = require('firebase-functions/v2/https');
+const { onRequest, onCall } = require('firebase-functions/v2/https');
 const { defineSecret } = require('firebase-functions/params');
 const admin = require('firebase-admin');
 const nodemailer = require('nodemailer');
+const logger = require('firebase-functions/logger');
+const { createHospitalHandler } = require('./hospital-account');
 
 admin.initializeApp();
 const SMTP_USER = defineSecret('SMTP_USER');
 const SMTP_PASS = defineSecret('SMTP_PASS');
 const SITE = 'https://care-vault-project.web.app';
 const COLLECTIONS = ['hospitals', 'users', 'patients', 'admins'];
+
+exports.createHospitalAccount = onCall({
+  region: 'asia-south1',
+  secrets: [SMTP_USER, SMTP_PASS],
+  cors: [SITE, 'https://care-vault-project.firebaseapp.com'],
+}, createHospitalHandler({
+  auth: admin.auth(),
+  db: admin.firestore(),
+  logger,
+  async sendInvitation(hospital, link) {
+    const transport = nodemailer.createTransport({
+      service: 'gmail',
+      auth: { user: SMTP_USER.value(), pass: SMTP_PASS.value() },
+    });
+    await transport.sendMail({
+      from: '"CareVault" <' + SMTP_USER.value() + '>',
+      to: hospital.email,
+      subject: 'Set up your CareVault hospital administrator password',
+      text: 'Hello ' + hospital.adminName + ',\n\nUse this Firebase link to set your password:\n\n' +
+        link + '\n\nThen sign in at ' + SITE + ' with your email address.\n',
+    });
+  },
+}));
 
 async function readList(key) {
   const snap = await admin.firestore().doc('carevault/' + key).get();

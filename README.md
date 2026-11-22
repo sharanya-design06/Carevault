@@ -14,6 +14,36 @@ open (demo only): add Firebase Auth and tighten them before real patient data. E
 
 ## System Admin console
 
+### Firebase hospital account backend
+
+The `createHospitalAccount` callable function provisions real Firebase Authentication accounts. It requires an
+authenticated caller with the `SYSTEM_ADMIN` (or `sysadmin`) custom claim and checks that the caller is still
+enabled and a System Admin in Firebase Auth. Roles are assigned by the server, never taken from form input.
+It returns `{ hospital }`, matching the newer deployed frontend's `Store.provisionHospital` method. The older
+frontend in this repository still uses demo registration; this backend does not make that demo login secure.
+
+Hospital account links are recorded in the server-only `hospitalAccounts` collection. Do not add public read/write
+rules for that collection. Firebase password-action links are emailed using the existing Gmail SMTP configuration;
+no password is stored in Firestore. If email delivery fails, the request reports the failure, and retrying the same
+details resends setup without creating another user. Existing unrelated Firebase users are never reassigned.
+Legacy hospitals in `carevault/hospitals` can be provisioned with their existing IDs. This does not migrate
+the deployed site's separate `dashboardHospitals` or `dashboardUsers` authorization schema, which still needs review.
+
+From the repository root, after installing Firebase CLI and signing in through its browser flow:
+
+```bash
+npm ci --prefix functions
+npm test --prefix functions
+firebase functions:secrets:set SMTP_USER --project care-vault-project
+firebase functions:secrets:set SMTP_PASS --project care-vault-project
+firebase deploy --only functions:createHospitalAccount --project care-vault-project
+```
+
+Use a Gmail app password for `SMTP_PASS`, entered only into the Firebase CLI secret prompt. Email/password
+sign-in must be enabled in Firebase Authentication. The initial System Admin custom claim must be assigned
+by a trusted administrator using the Admin SDK, not by a browser or by a self-registration form.
+Deploy only this function, not the older hosting assets or demo database rules over the secured website.
+
 Static app in `public/` (no build step), ready for Firebase Hosting.
 
 ```
