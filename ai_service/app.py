@@ -189,14 +189,14 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
         summary_text = extractive_summary(text, summarizer_vectorizer)
         summary_model = "local-tfidf-extractive-v1"
     else:
-        summary_text = ""
-        summary_model = "local-structured-extraction-v1"
+        summary_text = extractive_summary(text)
+        summary_model = "local-tfidf-per-report-v1"
     return {
         "headline": headline,
         "summaryText": summary_text,
         "findings": findings,
         "highlights": highlights,
-        "extracted": bool(findings or highlights[0] != "No matching conclusion or findings text was detected."),
+        "extracted": bool(summary_text or findings or highlights[0] != "No matching conclusion or findings text was detected."),
         "model": summary_model,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "pageCount": page_count,
@@ -352,7 +352,7 @@ def health():
         "summaryMode": (
             transformer_summarizer_mode.removesuffix("-v1") if transformer_summarizer_mode
             else "local-tfidf-extractive" if summarizer_vectorizer
-            else "local-structured-extraction"
+            else "local-tfidf-per-report"
         ),
         "clinicalValidation": False,
     }

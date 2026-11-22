@@ -98,7 +98,9 @@ weak, non-clinician-reviewed reference. BioBERT ranks report sentences for conte
 a summary. If fine-tuned weights are absent, the service downloads the unfine-tuned public BioBERT and Flan-T5-small
 checkpoints on first startup and runs them locally; model files are cached by Hugging Face and report text is not sent
 to Hugging Face. This requires the optional transformer dependencies and internet access on first startup; if unavailable,
-the service stays up with its structured-extraction fallback and reports the reason at `/api/ai/health`. ROUGE
+the service stays up and reports the reason at `/api/ai/health`. Without a saved TF-IDF model, it fits an extractive
+TF-IDF baseline on up to 500 sentences from the current report, entirely locally; it selects original text rather than
+generating new text. Reports without suitable text may have no summary. ROUGE
 evaluation does not establish clinical correctness, and summaries may omit or misstate details. It does not interpret
 scans. Drug checks are a rule-based
 lookup using the bundled interaction dataset plus a few
@@ -193,7 +195,8 @@ python -m uvicorn ai_service.app:app --host 127.0.0.1 --port 8000
 ```
 
 Open `http://127.0.0.1:8000` and sign in to use the app. Check service/model status at
-`http://127.0.0.1:8000/api/ai/health` and endpoint schemas at `/docs`. To fine-tune the BioBERT/T5 checkpoint on the
+`http://127.0.0.1:8000/api/ai/health` and endpoint schemas at `/docs`. `summaryMode: local-tfidf-per-report` indicates
+that the per-report fallback is available; `summaryModel` remains false because no trained model is loaded. To fine-tune the BioBERT/T5 checkpoint on the
 repository's sample data instead of using the downloaded baseline, run
 `python -m ai_service.train_transformer_summarizer` before starting the service; training can take significantly
 longer. The doctor assessment form requires all listed features, prefills only values available in the record,

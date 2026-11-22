@@ -29,10 +29,17 @@ def split_sentences(text):
     return sentences
 
 
-def extractive_summary(text, vectorizer, max_sentences=3, max_chars=700):
+def extractive_summary(text, vectorizer=None, max_sentences=3, max_chars=700):
     sentences = split_sentences(text)
     if not sentences:
         return ""
+    if vectorizer is None:
+        sentences = sentences[:500]
+        vectorizer = TfidfVectorizer(stop_words="english", max_features=10000)
+        analyze = vectorizer.build_analyzer()
+        if not any(analyze(sentence) for sentence in sentences):
+            return ""
+        vectorizer.fit(sentences)
     matrix = vectorizer.transform(sentences)
     centroid = np.asarray(matrix.mean(axis=0)).ravel()
     scores = np.asarray(matrix @ centroid).ravel()
@@ -42,10 +49,11 @@ def extractive_summary(text, vectorizer, max_sentences=3, max_chars=700):
     length = 0
     for index in ranked:
         sentence = sentences[index]
-        if length + len(sentence) > max_chars:
+        separator = 1 if selected else 0
+        if length + separator + len(sentence) > max_chars:
             continue
         selected.append(index)
-        length += len(sentence) + 1
+        length += separator + len(sentence)
         if len(selected) == max_sentences:
             break
     return " ".join(sentences[index] for index in sorted(selected))

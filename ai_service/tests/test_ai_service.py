@@ -3,6 +3,7 @@ import sys
 import tempfile
 import types
 import unittest
+from itertools import combinations
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -15,7 +16,7 @@ from ai_service.acquire_brfss import normalize_chunk
 from ai_service.train_brfss import choose_threshold
 from ai_service.train_models import TASKS, prepare_data
 from ai_service.train_precision_models import evaluate, select_threshold
-from ai_service.train_summarizer import extractive_summary
+from ai_service.train_summarizer import extractive_summary, split_sentences
 
 
 class AiServiceTests(unittest.TestCase):
@@ -33,7 +34,42 @@ class AiServiceTests(unittest.TestCase):
         values = {item["test"]: item["value"] for item in result["findings"]}
         self.assertEqual(values["HbA1c"], 7.4)
         self.assertEqual(values["Fasting glucose"], 132)
-        self.assertEqual(result["model"], "local-structured-extraction-v1")
+        self.assertEqual(result["model"], "local-tfidf-per-report-v1")
+
+    def test_summarizes_source_sentences_without_a_model_file(self):
+        text = (
+            "The patient reports persistent chest discomfort. "
+            "There is no evidence of acute heart failure. "
+            "The patient will return for further assessment. "
+            "Follow up with the clinical team is recommended."
+        )
+        with patch.object(service, "transformer_summarizer", None), patch.object(service, "summarizer_vectorizer", None):
+            result = service.summarize_text(text, 1)
+        self.assertTrue(result["summaryText"])
+        self.assertTrue(result["extracted"])
+        self.assertEqual(result["model"], "local-tfidf-per-report-v1")
+        for sentence in result["summaryText"].split(". "):
+            self.assertIn(sentence.strip(), text)
+
+    def test_report_without_suitable_text_has_no_generated_summary(self):
+        with patch.object(service, "transformer_summarizer", None), patch.object(service, "summarizer_vectorizer", None):
+            result = service.summarize_text("the and of for", 1)
+        self.assertEqual(result["summaryText"], "")
+        self.assertFalse(result["extracted"])
+
+    def test_sample_pdf_has_an_extractive_summary_without_model_files(self):
+        sample = service.ROOT / "samples" / "anna-rivera-lab-report.pdf"
+        text, pages = service.extract_pdf_text(sample.read_bytes())
+        with patch.object(service, "transformer_summarizer", None), patch.object(service, "summarizer_vectorizer", None):
+            result = service.summarize_text(text, pages)
+        candidates = split_sentences(text)
+        self.assertTrue(result["summaryText"])
+        self.assertLessEqual(len(result["summaryText"]), 700)
+        self.assertTrue(any(
+            " ".join(selected) == result["summaryText"]
+            for count in range(1, 4)
+            for selected in combinations(candidates, count)
+        ))
 
     def test_prefers_local_biobert_t5_summary_when_available(self):
         original_summarizer, original_vectorizer = (
@@ -133,7 +169,7 @@ class AiServiceTests(unittest.TestCase):
                     asyncio.run(startup())
 
             status = service.health()
-            self.assertEqual(status["summaryMode"], "local-structured-extraction")
+            self.assertEqual(status["summaryMode"], "local-tfidf-per-report")
             self.assertFalse(status["summaryModel"])
             self.assertIn("Pretrained BioBERT/Flan-T5 unavailable", status["summaryLoadError"])
         finally:
