@@ -41,11 +41,11 @@
       <p><button class="primary" type="submit">Register &amp; send setup email</button></p></form>`);
   }
 
-  function hospitalAdminView(id, err, done) {
+  function hospitalAdminView(id, err, done, values = {}) {
     if (done) return shell('hospitals', `<h1>Hospital Admin created</h1><div class="card"><p>${done.emailed ? 'A password-setup email was sent.' : '<span class="err" role="alert">The setup email could not be sent. Check email configuration, then use Resend setup email on the Hospitals page.</span>'}</p><p><a class="btn primary" href="#/hospitals">Hospitals</a></p></div>`);
     return shell('hospitals', `<h1>Add Hospital Admin</h1><form class="card" data-form="addHospitalAdmin"><input type="hidden" name="hospitalId" value="${esc(id)}">
-      <div class="formrow"><div><label for="name">Full name</label><input id="name" name="name" required maxlength="100"></div><div><label for="email">Email</label><input id="email" name="email" type="email" required maxlength="120"></div></div>
-      ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}<p><button class="primary" type="submit">Create &amp; send setup email</button></p></form>`);
+      <div class="formrow"><div><label for="name">Full name</label><input id="name" name="name" value="${esc(values.name || '')}" required maxlength="100"></div><div><label for="email">Email</label><input id="email" name="email" type="email" value="${esc(values.email || '')}" required maxlength="120"></div></div>
+      ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}<p><button class="primary" type="submit">Create &amp; send setup email</button> <a class="btn" href="#/hospitals">Back to hospitals</a></p></form>`);
   }
 
   function adminsView(admins, err, done) {
@@ -109,8 +109,16 @@
       if (kind === 'addHospital') {
         const { adminName, adminEmail, ...hospital } = d;
         const { id } = await FS.call('createDashboardHospital', hospital);
-        const done = await createAdminAccount('HOSPITAL_ADMIN', { name: adminName, email: adminEmail, hospitalId: id });
-        $app.innerHTML = hospitalAdminView(id, '', done);
+        try {
+          const done = await createAdminAccount('HOSPITAL_ADMIN', { name: adminName, email: adminEmail, hospitalId: id });
+          $app.innerHTML = hospitalAdminView(id, '', done);
+        } catch (error) {
+          const text = message(error);
+          if (text === null) { location.replace('/'); return; }
+          $app.innerHTML = hospitalAdminView(id, 'Hospital created, but its administrator could not be created: ' + text +
+            ' Retry here, or check the Hospitals page for an existing account.', null,
+          { name: adminName, email: adminEmail });
+        }
       } else if (kind === 'addHospitalAdmin') {
         $app.innerHTML = hospitalAdminView(d.hospitalId, '', await createAdminAccount('HOSPITAL_ADMIN', d));
       } else if (kind === 'addSystemAdmin') {
@@ -119,7 +127,8 @@
     } catch (error) {
       const text = message(error);
       if (text === null) { location.replace('/'); return; }
-      flash = text; render();
+      if (kind === 'addHospitalAdmin') $app.innerHTML = hospitalAdminView(d.hospitalId, text, null, d);
+      else { flash = text; render(); }
     }
   });
 

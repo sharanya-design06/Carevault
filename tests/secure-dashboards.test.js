@@ -77,6 +77,37 @@ test('failed invitation resend remains retryable', async () => {
   assert.equal(button.disabled, false);
 });
 
+test('a hospital remains recoverable if its first administrator cannot be created', async () => {
+  const fields = {
+    name: 'Test Hospital', code: 'test-hospital', licenseNo: 'L', phone: '1',
+    address: 'A', city: 'C', country: 'X', adminName: 'Admin Example', adminEmail: 'admin@example.test',
+  };
+  class FakeFormData {
+    constructor(form) { this.entries = Object.entries(form.fields); }
+    [Symbol.iterator]() { return this.entries[Symbol.iterator](); }
+  }
+  const page = await load('public/system-admin/secure.js', '#/hospitals/new', 'sysadmin', {
+    createDashboardHospital: { id: 'test-hospital' },
+  }, '/', FakeFormData);
+  const form = {
+    dataset: { form: 'addHospital' }, fields,
+    querySelector: () => ({ disabled: false }),
+  };
+  await page.listeners.submit({ target: { closest: () => form }, preventDefault() {} });
+  assert.match(page.app.innerHTML, /Hospital created, but its administrator could not be created/);
+  assert.match(page.app.innerHTML, /name="hospitalId" value="test-hospital"/);
+  assert.match(page.app.innerHTML, /name="email" type="email" value="admin@example.test"/);
+  const retry = {
+    dataset: { form: 'addHospitalAdmin' },
+    fields: { hospitalId: 'test-hospital', name: 'Admin Example', email: 'admin@example.test' },
+    querySelector: () => ({ disabled: false }),
+  };
+  await page.listeners.submit({ target: { closest: () => retry }, preventDefault() {} });
+  assert.match(page.app.innerHTML, /Add Hospital Admin/);
+  assert.match(page.app.innerHTML, /name="hospitalId" value="test-hospital"/);
+  assert.equal(page.calls.filter(([name]) => name === 'createDashboardHospital').length, 1);
+});
+
 test('a signed-out session redirects to the login page and unrelated roles are not rendered', async () => {
   const out = await load('public/system-admin/secure.js', '#/hospitals', 'sysadmin', {});
   assert.equal(out.location.replaced, undefined);

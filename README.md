@@ -94,6 +94,8 @@ All of these run in Cloud Functions with the Admin SDK; clients have no direct d
   System Admins can resend a Firebase setup email for an active Hospital Admin from the Hospitals page. A failed
   delivery leaves the resend control available; resolve SMTP configuration before retrying. Legacy demo invitations
   do not provision Firebase accounts and cannot be used for Firebase sign-in.
+  If a hospital is created but its first administrator cannot be created, the registration page keeps an
+  administrator form for that hospital so the System Admin can retry without registering the hospital again.
 - **Lookup and encounters** (`dashboard-lookup.js`): `findDashboardPatient` by HRID, QR payload, phone, ABHA number,
   hospital patient ID, or name + date of birth + gender, limited to the caller's hospital and audited by method only.
   `openDashboardEncounter` starts a new visit; clinical records and notes attach to the patient's open encounter.
