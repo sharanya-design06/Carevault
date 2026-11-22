@@ -20,11 +20,13 @@
       <div class="card"><h2>Recent activity</h2>${auditTable(audit.slice(0, 6))}</div>`);
   }
 
-  function hospitalsView(hospitals) {
-    return shell('hospitals', `<h1>Hospitals</h1><div class="card tablewrap"><table><thead><tr><th>Name</th><th>Code</th><th>City</th><th>Status</th><th></th></tr></thead><tbody>
+  function hospitalsView(hospitals, users) {
+    const admins = users.filter((u) => u.role === 'HOSPITAL_ADMIN');
+    return shell('hospitals', `<h1>Hospitals</h1><div class="card tablewrap"><table><thead><tr><th>Name</th><th>Code</th><th>City</th><th>Status</th><th>Hospital admins</th><th></th></tr></thead><tbody>
       ${hospitals.map((h) => `<tr><td>${esc(h.name)}</td><td>${esc(h.code)}</td><td>${esc(h.city)}</td><td>${badge(h.status === 'inactive' ? 'inactive' : 'active')}</td><td class="actions">
+      ${admins.filter((u) => u.hospitalId === h.id).map((u) => `<div>${esc(u.name)} (${esc(u.email)}) ${u.status === 'active' && h.status === 'active' ? `<button class="sm" data-action="invite" data-id="${esc(u.uid)}">Resend setup email</button>` : badge('inactive')}</div>`).join('') || '<span class="mut">No Firebase administrator</span>'}</td><td class="actions">
       <a class="btn sm" href="#/hospitals/${esc(h.id)}/admin">Add admin</a>
-      ${h.status === 'active' ? `<button class="sm danger" data-action="hospitalStatus" data-status="inactive" data-id="${esc(h.id)}">Deactivate</button>` : `<button class="sm primary" data-action="hospitalStatus" data-status="active" data-id="${esc(h.id)}">Activate</button>`}</td></tr>`).join('') || '<tr><td colspan="5" class="mut">No hospitals found.</td></tr>'}
+      ${h.status === 'active' ? `<button class="sm danger" data-action="hospitalStatus" data-status="inactive" data-id="${esc(h.id)}">Deactivate</button>` : `<button class="sm primary" data-action="hospitalStatus" data-status="active" data-id="${esc(h.id)}">Activate</button>`}</td></tr>`).join('') || '<tr><td colspan="6" class="mut">No hospitals found.</td></tr>'}
       </tbody></table></div>`);
   }
 
@@ -40,7 +42,7 @@
   }
 
   function hospitalAdminView(id, err, done) {
-    if (done) return shell('hospitals', `<h1>Hospital Admin created</h1><div class="card"><p>${done.emailed ? 'A password-setup email was sent.' : '<span class="err" role="alert">The setup email could not be sent; use Resend from System Admins.</span>'}</p><p><a class="btn primary" href="#/hospitals">Hospitals</a></p></div>`);
+    if (done) return shell('hospitals', `<h1>Hospital Admin created</h1><div class="card"><p>${done.emailed ? 'A password-setup email was sent.' : '<span class="err" role="alert">The setup email could not be sent. Check email configuration, then use Resend setup email on the Hospitals page.</span>'}</p><p><a class="btn primary" href="#/hospitals">Hospitals</a></p></div>`);
     return shell('hospitals', `<h1>Add Hospital Admin</h1><form class="card" data-form="addHospitalAdmin"><input type="hidden" name="hospitalId" value="${esc(id)}">
       <div class="formrow"><div><label for="name">Full name</label><input id="name" name="name" required maxlength="100"></div><div><label for="email">Email</label><input id="email" name="email" type="email" required maxlength="120"></div></div>
       ${err ? `<div class="err" role="alert">${esc(err)}</div>` : ''}<p><button class="primary" type="submit">Create &amp; send setup email</button></p></form>`);
@@ -76,7 +78,10 @@
         html = dashboardView(hs, us.filter((u) => u.role === 'SYSTEM_ADMIN'), audit);
       } else if (parts[0] === 'hospitals' && parts[1] === 'new') html = registerHospitalView(err);
       else if (parts[0] === 'hospitals' && parts[2] === 'admin') html = hospitalAdminView(parts[1], err);
-      else if (parts[0] === 'hospitals') html = hospitalsView(await FS.call('listDashboardHospitals'));
+      else if (parts[0] === 'hospitals') {
+        const [hospitals, users] = await Promise.all([FS.call('listDashboardHospitals'), FS.call('listDashboardUsers')]);
+        html = hospitalsView(hospitals, users);
+      }
       else if (parts[0] === 'admins') html = adminsView(await FS.call('listDashboardUsers'), err);
       else if (parts[0] === 'audit') html = shell('audit', `<h1>Global Audit Logs</h1><div class="card">${auditTable(await FS.call('listDashboardAudit'))}<p class="mut">Latest 100 events. Read-only.</p></div>`);
       else html = shell('', '<h1>Page not found</h1>');
@@ -134,7 +139,10 @@
         await FS.call('setDashboardHospitalStatus', { id: b.dataset.id, status: b.dataset.status });
         toast('Hospital updated'); render();
       }
-    } catch (error) { toast(message(error) || 'Signed out'); }
+    } catch (error) {
+      if (b.dataset.action === 'invite') b.disabled = false;
+      toast(message(error) || 'Signed out');
+    }
   });
 
   window.addEventListener('hashchange', render);

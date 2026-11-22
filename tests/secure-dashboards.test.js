@@ -44,10 +44,37 @@ test('hospital admin dashboard and staff list render escaped server data', async
 });
 
 test('system admin hospitals and audit views render', async () => {
-  const hs = await load('public/system-admin/secure.js', '#/hospitals', 'sysadmin', { listDashboardHospitals: [hospital] });
+  const hs = await load('public/system-admin/secure.js', '#/hospitals', 'sysadmin', { listDashboardHospitals: [hospital], listDashboardUsers: [] });
   assert.match(hs.app.innerHTML, /Add admin/);
   const audit = await load('public/system-admin/secure.js', '#/audit', 'sysadmin', { listDashboardAudit: [{ action: 'hospital_created', actorRole: 'SYSTEM_ADMIN', hospitalId: 'h1', timestamp: '2026-01-01T00:00:00Z' }] });
   assert.match(audit.app.innerHTML, /hospital created/);
+});
+
+test('system admin can resend setup email to active hospital admins only', async () => {
+  const users = [
+    { uid: 'active', name: 'Admin <One>', email: 'a@example.test', role: 'HOSPITAL_ADMIN', hospitalId: 'h1', status: 'active' },
+    { uid: 'inactive', name: 'Admin Two', email: 'b@example.test', role: 'HOSPITAL_ADMIN', hospitalId: 'h1', status: 'inactive' },
+    { uid: 'other', name: 'Other', email: 'c@example.test', role: 'HOSPITAL_ADMIN', hospitalId: 'h2', status: 'active' },
+  ];
+  const page = await load('public/system-admin/secure.js', '#/hospitals', 'sysadmin', {
+    listDashboardHospitals: [hospital], listDashboardUsers: users, sendDashboardInvite: { sent: true },
+  });
+  assert.match(page.app.innerHTML, /Admin &#60;One&#62;/);
+  assert.match(page.app.innerHTML, /data-action="invite" data-id="active"/);
+  assert.doesNotMatch(page.app.innerHTML, /data-id="inactive"|c@example.test/);
+  const button = { dataset: { action: 'invite', id: 'active' }, disabled: false };
+  await page.listeners.click({ target: { closest: () => button } });
+  assert.deepEqual(JSON.parse(JSON.stringify(page.calls.at(-1))), ['sendDashboardInvite', { uid: 'active' }]);
+  assert.equal(button.disabled, false);
+});
+
+test('failed invitation resend remains retryable', async () => {
+  const page = await load('public/system-admin/secure.js', '#/hospitals', 'sysadmin', {
+    listDashboardHospitals: [hospital], listDashboardUsers: [],
+  });
+  const button = { dataset: { action: 'invite', id: 'active' }, disabled: false };
+  await page.listeners.click({ target: { closest: () => button } });
+  assert.equal(button.disabled, false);
 });
 
 test('a signed-out session redirects to the login page and unrelated roles are not rendered', async () => {

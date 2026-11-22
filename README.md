@@ -91,6 +91,9 @@ All of these run in Cloud Functions with the Admin SDK; clients have no direct d
   `completeDashboardInvite` back `public/set-password/`; completion consumes the token transactionally before the
   password is set, so a link works once. A newer invitation supersedes older ones. The password passes through the
   function over TLS to the Admin SDK and is never stored or logged. Forgot Password still uses Firebase reset links.
+  System Admins can resend a Firebase setup email for an active Hospital Admin from the Hospitals page. A failed
+  delivery leaves the resend control available; resolve SMTP configuration before retrying. Legacy demo invitations
+  do not provision Firebase accounts and cannot be used for Firebase sign-in.
 - **Lookup and encounters** (`dashboard-lookup.js`): `findDashboardPatient` by HRID, QR payload, phone, ABHA number,
   hospital patient ID, or name + date of birth + gender, limited to the caller's hospital and audited by method only.
   `openDashboardEncounter` starts a new visit; clinical records and notes attach to the patient's open encounter.
