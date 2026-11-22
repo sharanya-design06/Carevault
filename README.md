@@ -66,10 +66,10 @@ Deactivate Staff. PCC cannot create PCC/admin accounts, cannot touch other roles
 (Hospital Admin only). The Hospital Admin can create PCC accounts. Audit events record the HRID, not patient names.
 
 Doctor console (`/doctor/`): Dashboard, Patient Search (HRID, or date of birth + name/phone), patient workspace with
-Overview (allergies, current medications, risk indicators, latest AI summaries), Medical History, Health Timeline
+Overview (allergies, current medications, chart-derived screening indicators, latest report summaries), Medical History and cross-department Health Timeline
 (hospital + author provenance), Reports (PDF + AI summary), Disease Risk dashboard (transparent screening indicators
 and optional local research-model assessment), Diagnosis Entry, Prescription
-with allergy/interaction/duplicate checks (serious alerts need an override reason), Emergency Access (category +
+with allergy, medication, duplicate and limited confirmed-diagnosis caution checks (safety alerts need an override reason), Emergency Access (category +
 reason, 30-minute grant, audited at both hospitals) and Access History. Patients are reachable only at the doctor's
 own hospital or during emergency access; other hospitals' records appear only if marked shared (otherwise a hidden-record
 count is shown).
@@ -79,20 +79,24 @@ SHA-256 recorded), Report Details with upload provenance, Uploaded Reports (mine
 PDFs use the configured Firebase Storage when remote storage is enabled; otherwise they are kept in browser IndexedDB.
 
 Pharmacist console (`/pharmacist/`): Dashboard, Patient Search (own hospital), Medication List, Allergy Profile,
-Add Prescription/Medication with allergy, interaction and duplicate checks, a CRITICAL/Warning alert before
-finalizing (override reason required for critical alerts) and Prescription History.
+Add Prescription/Medication with allergy, interaction, duplicate and limited confirmed-diagnosis caution checks,
+a CRITICAL/Warning alert before finalizing (override reason required for safety alerts) and Prescription History.
 
 Nurse console (`/nurse/`): Dashboard, Patient Search, Basic Information (name, age, emergency contact, allergies),
 Record Vitals (temperature, pulse, BP, respiratory rate, SpO2, weight, pain; range-validated, abnormal values flagged)
 and Vital History. Vitals are append-only: an update creates a new entry referencing the earlier one.
 
-Patient portal (`/patient/`): Dashboard, My Profile (contact details only), My HRID, Medical History, Health Timeline,
-Medical Reports with automated summaries, Prescription History, Allergies, Access History (staff who accessed the record),
+Patient portal (`/patient/`): Dashboard, My Profile (contact details only), My HRID, Medical History, Health Timeline
+(including recorded vitals), chart-based Health Summary, Medical Reports with automated summaries, Prescription History, Allergies, Access History (staff who accessed the record),
 Emergency Access History, Consent Management (cross-hospital sharing is enforced for clinicians; the emergency
 notification preference is stored only), Account Settings and Change Password. Patients get an account when PCC
 registers them with an email (invitation link) and sign in on the same login page.
 
-AI caveats: report summaries extract selectable PDF text and common lab values. An optional local BioBERT/T5
+AI caveats: doctor chart values are assembled from visible vitals and report extractions; the research-model form
+prefills only values with a matching chart field and leaves other model inputs for clinician confirmation. Available
+models classify labels in their source datasets; they do not forecast future disease onset. Report summaries extract
+selectable PDF text and common lab values, including liver-panel values when present; findings without configured
+reference ranges are shown as unassessed rather than normal/abnormal. An optional local BioBERT/T5
 summarizer can be fine-tuned on the repository's `mtsamples.csv` transcriptions; its `description` field is only a
 weak, non-clinician-reviewed reference. BioBERT ranks report sentences for context and fine-tuned Flan-T5 generates
 a summary. If fine-tuned weights are absent, the service downloads the unfine-tuned public BioBERT and Flan-T5-small
@@ -187,6 +191,7 @@ From the repository root in PowerShell:
 python -m venv ai_service\.venv
 .\ai_service\.venv\Scripts\Activate.ps1
 python -m pip install -r ai_service\requirements.txt
+python -m ai_service.train_models
 python -m pip install -r ai_service\requirements-transformer.txt
 python -m unittest discover -s ai_service\tests
 python -m uvicorn ai_service.app:app --host 127.0.0.1 --port 8000

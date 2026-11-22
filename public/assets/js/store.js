@@ -53,8 +53,8 @@
 
   const ROLE_OF = { 'Hospital Admin': 'hospitaladmin', PCC: 'pcc', Doctor: 'doctor', 'Lab Technician': 'lab', Pharmacist: 'pharmacist', Nurse: 'nurse' };
   // ---------- Clinical helpers (Doctor / Lab) ----------
-  const HRID_RE = /^HDW-\d{8}-[A-Z0-9]{8}$/;
-  const HRID_MSG = 'Enter a valid HRID (format HDW-YYYYMMDD-XXXXXXXX).';
+  const HRID_RE = /^(?:HDW-\d{8}-[A-Z0-9]{8}|HR-[A-Z0-9]{10})$/;
+  const HRID_MSG = 'Enter a valid HRID.';
   const USERNAME_RE = /^[a-z0-9][a-z0-9._-]{2,31}$/;
   const RESET_MINUTES = 30;
   const REPORT_CATEGORIES = ['Blood test', 'Imaging', 'Pathology', 'Microbiology', 'Other'];
@@ -86,6 +86,13 @@
     ['sildenafil', 'nitroglycerin', 'contraindicated', 'Profound hypotension.'],
     ['clopidogrel', 'omeprazole', 'moderate', 'Omeprazole may reduce clopidogrel effectiveness.'],
   ];
+  const CONDITION_CAUTIONS = [
+    { conditions: ['chronic kidney disease', 'kidney disease', 'renal disease', 'ckd'], medications: ['ibuprofen', 'naproxen', 'diclofenac', 'ketorolac'], message: 'NSAIDs may worsen kidney function in people with kidney disease; review renal status and alternatives.' },
+    { conditions: ['heart failure', 'congestive heart failure'], medications: ['ibuprofen', 'naproxen', 'diclofenac', 'ketorolac'], message: 'NSAIDs may worsen fluid retention or heart-failure symptoms; review this combination.' },
+    { conditions: ['hypertension', 'high blood pressure'], medications: ['ibuprofen', 'naproxen', 'diclofenac', 'ketorolac'], message: 'NSAIDs may affect blood-pressure control; review this combination.' },
+    { conditions: ['diabetes', 'diabetes mellitus'], medications: ['prednisone', 'prednisolone', 'dexamethasone'], message: 'Systemic corticosteroids may raise blood glucose; consider monitoring and review the treatment plan.' },
+    { conditions: ['peptic ulcer', 'stomach ulcer', 'gastrointestinal ulcer'], medications: ['ibuprofen', 'naproxen', 'diclofenac', 'ketorolac', 'aspirin'], message: 'NSAIDs or aspirin may increase gastrointestinal bleeding risk with a documented ulcer history; review this combination.' },
+  ];
   const DRUG_NAMES = Array.from(new Set(Object.keys(DRUG_CLASSES).reduce((l, c) => l.concat(DRUG_CLASSES[c].filter((n) => !Object.keys(DRUG_CLASSES).includes(n) && !['nsaids', 'opioids', 'sulfa', 'sulfa drugs', 'penicillin'].includes(n))), [])
     .concat(['warfarin', 'lisinopril', 'metformin', 'amlodipine', 'paracetamol', 'omeprazole', 'clopidogrel', 'sertraline', 'digoxin', 'amiodarone', 'methotrexate', 'sildenafil', 'nitroglycerin', 'spironolactone', 'potassium chloride', 'trimethoprim', 'furosemide', 'metoprolol', 'prednisolone', 'salbutamol', 'insulin glargine']))).sort();
   const LAB_TESTS = [
@@ -98,6 +105,14 @@
     ['Creatinine', /creatinine/i, 'mg/dL', 0.6, 1.3],
     ['eGFR', /\begfr\b/i, 'mL/min/1.73m²', 60, 200],
     ['Hemoglobin', /h(?:a)?emoglobin(?! ?a1c)/i, 'g/dL', 12, 17.5],
+    ['Total bilirubin', /\btotal bilirubin\b/i, 'mg/dL', null, null],
+    ['Direct bilirubin', /\bdirect bilirubin\b/i, 'mg/dL', null, null],
+    ['Alkaline phosphatase', /\b(?:alkaline phosphatase|alkaline phosphotase|alp)\b/i, 'U/L', null, null],
+    ['Alanine aminotransferase', /\b(?:alanine aminotransferase|alamine aminotransferase|alt)\b/i, 'U/L', null, null],
+    ['Aspartate aminotransferase', /\b(?:aspartate aminotransferase|ast)\b/i, 'U/L', null, null],
+    ['Total proteins', /\btotal proteins?\b/i, 'g/dL', null, null],
+    ['Albumin/globulin ratio', /\b(?:albumin\s*\/\s*globulin ratio|a\s*\/\s*g ratio)\b/i, '', null, null],
+    ['Albumin', /\balbumin\b(?!\s*\/)/i, 'g/dL', null, null],
   ];
   let drugInteractionIndexPromise = null;
   const normalizeDrug = (value) => String(value || '').normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
@@ -183,6 +198,26 @@
     return f;
   }
   const withFlags = (v) => Object.assign(withHospital(v), { flags: vitalFlags(v) });
+  function vitalTimelineItems(vitals) {
+    return vitals.map((v) => {
+      const details = [
+        v.temp != null && 'Temperature ' + v.temp + ' °C',
+        v.pulse != null && 'Pulse ' + v.pulse + ' bpm',
+        (v.bpSys != null || v.bpDia != null) && 'BP ' + (v.bpSys == null ? '—' : v.bpSys) + '/' + (v.bpDia == null ? '—' : v.bpDia) + ' mmHg',
+        v.rr != null && 'Respiratory rate ' + v.rr + '/min',
+        v.spo2 != null && 'SpO2 ' + v.spo2 + '%',
+        v.weightKg != null && 'Weight ' + v.weightKg + ' kg',
+        v.pain != null && 'Pain ' + v.pain + '/10',
+        v.flags && v.flags.length && 'Flags: ' + v.flags.join(', '),
+      ].filter(Boolean);
+      return {
+        id: 'vital_' + v.id, type: 'vital', title: 'Vitals recorded',
+        details: details.join('; '), hospitalId: v.hospitalId,
+        hospitalName: v.hospitalName, author: v.recordedByName || v.recordedBy,
+        createdAt: v.recordedAt,
+      };
+    });
+  }
   const role = (r) => { const s = currentAdmin(); return s && s.role === r ? s : null; };
 
   function secondarySearch(s, q) {
@@ -204,6 +239,8 @@
           medication: String(rawName).trim(),
           current_medications: currentMeds.map((m) => m.name),
           allergies: db.allergies.filter((a) => a.hrid === hrid).map((a) => ({ name: a.name, reaction: a.reaction })),
+          conditions: db.clinicalRecords.filter((r) => r.hrid === hrid && r.type === 'diagnosis' && r.dxStatus === 'confirmed')
+            .map((r) => [r.icd, r.title].filter(Boolean).join(' ')),
         }),
       });
       if (response.ok) return (await response.json()).alerts;
@@ -234,6 +271,19 @@
       const key = interactionKey(n, cur), description = interactionIndex.get(key);
       if (description && !matchedPairs.has(key)) {
         alerts.push({ type: 'interaction', severity: 'unknown', message: rawName + ' + ' + m.name + ': ' + description + ' The source does not provide a severity rating; have a pharmacist review this combination.' });
+      }
+    });
+    const confirmedConditions = db.clinicalRecords
+      .filter((r) => r.hrid === hrid && r.type === 'diagnosis' && r.dxStatus === 'confirmed')
+      .map((r) => norm(r.title));
+    CONDITION_CAUTIONS.forEach((rule) => {
+      const conditionMatch = confirmedConditions.some((condition) => rule.conditions.some((term) => condition.includes(term)));
+      if (conditionMatch && rule.medications.includes(normalizeDrug(n))) {
+        alerts.push({
+          type: 'condition',
+          severity: 'unknown',
+          message: rule.message + ' This rule is a limited review prompt, not a contraindication or a complete interaction check.',
+        });
       }
     });
     return alerts;
@@ -272,6 +322,35 @@
     ];
   }
 
+  function chartClinical(p, reports, visibleVitals) {
+    const clinical = Object.assign({}, p.clinical || {});
+    const reportValues = {};
+    const reportFields = {
+      'hba1c': 'hba1c', 'fasting glucose': 'fastingGlucose',
+      '2-hour glucose': 'twoHourGlucose', '2 hour glucose': 'twoHourGlucose',
+      'total cholesterol': 'cholesterol', 'ldl cholesterol': 'ldl',
+      'egfr': 'egfr', 'creatinine': 'creatinine',
+      'total bilirubin': 'totalBilirubin', 'direct bilirubin': 'directBilirubin',
+      'alkaline phosphatase': 'alkalinePhosphotase', 'alanine aminotransferase': 'alanineAminotransferase',
+      'aspartate aminotransferase': 'aspartateAminotransferase', 'total proteins': 'totalProteins',
+      'albumin': 'albumin', 'albumin/globulin ratio': 'albuminGlobulinRatio',
+    };
+    reports.slice().sort((a, b) => new Date(b.uploadedAt) - new Date(a.uploadedAt)).forEach((report) => {
+      (report.summary && Array.isArray(report.summary.findings) ? report.summary.findings : []).forEach((finding) => {
+        const key = reportFields[norm(finding.test)];
+        const value = Number(finding.value);
+        if (key && Number.isFinite(value) && reportValues[key] == null) reportValues[key] = value;
+      });
+    });
+    Object.assign(clinical, reportValues);
+    const vitals = visibleVitals.slice().sort((a, b) => new Date(b.recordedAt) - new Date(a.recordedAt));
+    ['bpSys', 'bpDia', 'bmi', 'weightKg'].forEach((key) => {
+      const recent = vitals.find((item) => item[key] !== undefined && item[key] !== null && item[key] !== '');
+      if (recent) clinical[key] = recent[key];
+    });
+    return clinical;
+  }
+
   async function summarizeReport(buf) {
     const pdfjs = await import('/assets/vendor/pdfjs/pdf.min.mjs');
     pdfjs.GlobalWorkerOptions.workerSrc = '/assets/vendor/pdfjs/pdf.worker.min.mjs';
@@ -308,14 +387,18 @@
       const m = lines.map((line) => new RegExp('(?:' + re.source + ')[^0-9]{0,24}(\\d+(?:\\.\\d+)?)', 'i').exec(line)).find(Boolean);
       if (!m) return;
       const value = parseFloat(m[1]);
-      findings.push({ test, value, unit, range: lo + '–' + hi, flag: value < lo ? 'low' : value > hi ? 'high' : 'normal' });
+      const hasRange = Number.isFinite(lo) && Number.isFinite(hi);
+      findings.push({ test, value, unit, range: hasRange ? lo + '–' + hi : 'Not configured', flag: !hasRange ? 'unknown' : value < lo ? 'low' : value > hi ? 'high' : 'normal' });
     });
-    const abnormal = findings.filter((x) => x.flag !== 'normal');
+    const abnormal = findings.filter((x) => x.flag === 'low' || x.flag === 'high');
+    const summaryLines = lines.map((line) => line.trim()).filter((line) =>
+      line.length >= 24 && /\b(?:assessment|impression|conclusion|finding|diagnosis|recommend|abnormal|positive|negative|elevated|low|high|critical|follow.?up|treatment|result|shows?)\b/i.test(line));
+    const summaryText = Array.from(new Set(summaryLines)).slice(0, 3).join(' ').slice(0, 600);
     return {
       headline: findings.length
         ? 'Extracted ' + findings.length + ' common lab value(s) from ' + pdf.numPages + ' page(s); ' + abnormal.length + ' are outside the configured reference ranges' + (abnormal.length ? ': ' + abnormal.map((x) => x.test).join(', ') : '') + '.'
         : 'No recognized lab values were found in the PDF text. Scanned images are not processed with OCR; manual review is required.',
-      findings, extracted: findings.length > 0, model: 'local-pdf-extractor-v1', generatedAt: now(),
+      summaryText, findings, extracted: findings.length > 0 || !!summaryText, model: 'local-rule-extractive-v1', generatedAt: now(),
     };
   }
 
@@ -384,9 +467,9 @@
     let alerts;
     try { alerts = await drugAlerts(a.patient.hrid, name); }
     catch (e) { return { ok: false, error: 'Interaction checking is unavailable, so the prescription was not saved. ' + e.message }; }
-    const blocking = alerts.some((x) => SEVERE.includes(x.severity));
+    const blocking = alerts.some((x) => SEVERE.includes(x.severity) || x.type === 'condition');
     const reason = String(overrideReason || '').trim();
-    if (blocking && reason.length < 10) return { ok: false, needsOverride: true, alerts, error: 'Serious safety alerts must be reviewed; enter an override reason (min 10 characters) to proceed.' };
+    if (blocking && reason.length < 10) return { ok: false, needsOverride: true, alerts, error: 'Safety alerts must be reviewed; enter an override reason (min 10 characters) to proceed.' };
     const instructions = [route, frequency, duration && 'for ' + duration, indication && '(' + indication + ')'].filter(Boolean).join(', ');
     db.medications.unshift({ id: uid('med'), hrid: a.patient.hrid, name, dose, instructions, status: 'current', hospitalId: s.hospitalId, prescribedBy: s.name, createdAt: now() });
     db.clinicalRecords.unshift({ id: uid('rec'), hrid: a.patient.hrid, type: 'prescription', title: 'Prescription: ' + name, details: dose + ' — ' + instructions, hospitalId: s.hospitalId, authorId: s.id, author: s.name, createdAt: now(), shared: true });
@@ -675,17 +758,20 @@
       const p = a.patient, vis = (i) => visibleItem(s, a.grant, i);
       const allRecs = db.clinicalRecords.filter((r) => r.hrid === p.hrid), allReps = db.reports.filter((r) => r.hrid === p.hrid);
       const records = allRecs.filter(vis).map(withHospital), reports = allReps.filter(vis).map(withHospital);
+      const vitals = db.vitals.filter((v) => v.hrid === p.hrid && vis(v)).map(withFlags);
+      const clinical = chartClinical(p, reports, vitals);
       const action = 'Clinical record accessed: ' + p.hrid;
       if (!db.audit.some((l) => l.actor === s.email && l.action === action && Date.now() - new Date(l.ts).getTime() < 5 * 60000)) log('access', 'success', action, s.email, s.hospitalId);
       const timeline = records.map((r) => ({ id: r.id, type: r.type, title: r.title, details: r.details, icd: r.icd, hospitalId: r.hospitalId, hospitalName: r.hospitalName, author: r.author, createdAt: r.createdAt }))
         .concat(reports.map((r) => ({ id: r.id, type: 'report', title: r.title, details: r.summary ? r.summary.headline : 'Report uploaded', hospitalId: r.hospitalId, hospitalName: r.hospitalName, author: r.uploadedByName || r.uploadedBy, createdAt: r.uploadedAt, reportId: r.id })))
+        .concat(vitalTimelineItems(vitals))
         .sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
       return {
-        patient: Object.assign(limitedPatient(p), { phone: p.phone, hospitalId: p.hospitalId, hospitalName: hosName(p.hospitalId), clinical: p.clinical || {} }),
+        patient: Object.assign(limitedPatient(p), { phone: p.phone, hospitalId: p.hospitalId, hospitalName: hosName(p.hospitalId), clinical }),
         records, reports, timeline, hidden: allRecs.length - records.length + allReps.length - reports.length,
         allergies: db.allergies.filter((x) => x.hrid === p.hrid).map(withHospital),
         medications: db.medications.filter((m) => m.hrid === p.hrid && m.status === 'current').map(withHospital),
-        risks: computeRisks(p, records),
+        risks: computeRisks(Object.assign({}, p, { clinical }), records),
         emergency: a.grant ? { expiresAt: a.grant.expiresAt, reason: a.grant.reason } : null,
       };
     },
@@ -914,16 +1000,20 @@
       if (!p) return null;
       const records = db.clinicalRecords.filter((r) => r.hrid === p.hrid).map(withHospital);
       const reports = db.reports.filter((r) => r.hrid === p.hrid).map(withHospital);
+      const vitals = db.vitals.filter((v) => v.hrid === p.hrid).map(withFlags);
+      const clinical = chartClinical(p, reports, vitals);
       const timeline = records.map((r) => ({ id: r.id, type: r.type, title: r.title, details: r.details, icd: r.icd, hospitalName: r.hospitalName, author: r.author, createdAt: r.createdAt }))
         .concat(reports.map((r) => ({ id: r.id, type: 'report', title: r.title, details: r.summary ? r.summary.headline : 'Report uploaded', hospitalName: r.hospitalName, author: r.uploadedByName || r.uploadedBy, createdAt: r.uploadedAt, reportId: r.id })))
+        .concat(vitalTimelineItems(vitals))
         .sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt));
       const events = patientAccessEvents(p);
       return {
-        patient: { id: p.id, hrid: p.hrid, name: p.name, dob: p.dob, gender: p.gender, phone: p.phone || '', email: p.email, address: p.address || '', emergencyName: p.emergencyName || '', emergencyPhone: p.emergencyPhone || '', hospitalName: hosName(p.hospitalId) },
+        patient: { id: p.id, hrid: p.hrid, name: p.name, dob: p.dob, gender: p.gender, phone: p.phone || '', email: p.email, address: p.address || '', emergencyName: p.emergencyName || '', emergencyPhone: p.emergencyPhone || '', hospitalName: hosName(p.hospitalId), clinical },
         records, reports, timeline,
         allergies: db.allergies.filter((x) => x.hrid === p.hrid).map(withHospital),
         medications: db.medications.filter((m) => m.hrid === p.hrid).map(withHospital).sort((x, y) => new Date(y.createdAt) - new Date(x.createdAt)),
-        vitals: db.vitals.filter((v) => v.hrid === p.hrid).map(withFlags).slice(0, 5),
+        vitals: vitals.slice(0, 5),
+        risks: computeRisks(Object.assign({}, p, { clinical }), records),
         consent: Object.assign({ shareWithOtherHospitals: true, notifyOnEmergency: true }, p.consent),
         accessCount: events.length, emergencyCount: events.filter((e) => e.category === 'emergency').length,
       };

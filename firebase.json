@@ -14,6 +14,18 @@
     ],
     "rewrites": [
       {
+        "source": "/getPatientReport",
+        "function": { "functionId": "getPatientReport", "region": "asia-south1" }
+      },
+      {
+        "source": "/getPatientRisk",
+        "function": { "functionId": "getPatientRisk", "region": "asia-south1" }
+      },
+      {
+        "source": "/getPatientAllergies",
+        "function": { "functionId": "getPatientAllergies", "region": "asia-south1" }
+      },
+      {
         "source": "/api/sendInvite",
         "function": { "functionId": "sendInvite", "region": "asia-south1" }
       },

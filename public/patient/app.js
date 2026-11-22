@@ -105,90 +105,23 @@
         <p><button class="primary" type="submit">Change password</button></p></form>`);
   }
 
-  function healthReportView(d, loading = false, reportData = null, error = null) {
-    if (loading) {
-      return shell('health-report', `<h1>Disease Risk Report</h1><div class="card"><p>${badge('processing')} Loading your health assessment report...</p></div>`);
-    }
-    if (error) {
-      return shell('health-report', `<h1>Disease Risk Report</h1>${alertBox('danger', esc(error))}`);
-    }
-    if (!reportData) {
-      return shell('health-report', `<h1>Disease Risk Report</h1><div class="card"><p class="mut">Report data not available.</p></div>`);
-    }
-
-    const r = reportData;
-    const p = d.patient;
-    const riskColor = (level) => ({
-      'High': '#d9534f',
-      'Moderate': '#f0ad4e',
-      'Low': '#5cb85c'
-    }[level] || '#999');
-
-    return shell('health-report', `<h1>Disease Risk Report</h1>
-      <div class="card"><h2>Patient Information</h2>
-        <p><b>${esc(p.name)}</b> · ${esc(p.hrid)}</p>
-        <p>Age: ${age(p.dob)} years · ${esc(p.gender)} · DOB: ${esc(p.dob)}</p>
-        <p class="mut">Generated: ${new Date(r.reportMetadata.generatedAt).toLocaleDateString()}</p>
-        <p class="mut small">${esc(r.reportMetadata.disclaimer)}</p>
+  function healthReportView(d) {
+    return shell('health-report', `<h1>Health Summary</h1>
+      <div class="card"><h2>Chart-based screening indicators</h2>
+        ${d.risks.map((r) => `<div class="risk">
+          <div><b>${esc(r.condition)}</b></div>
+          ${Number.isFinite(r.score) ? `<progress max="100" value="${r.score}" aria-label="${esc(r.condition)} screening score">${r.score}</progress>` : '<p class="mut">Insufficient chart data for a screening score.</p>'}
+          <div>${badge(r.level.toLowerCase())} ${r.diagnosed ? 'Documented diagnosis' : Number.isFinite(r.score) ? r.score + '/100 screening score' : ''}<br>
+            <span class="mut">Data completeness ${r.confidence}%</span></div>
+          <details><summary>Contributing factors</summary><ul>${r.factors.map((f) => `<li>${esc(f.label)}: ${f.known ? f.earned + '/' + f.max : 'data not available'}</li>`).join('')}</ul></details>
+        </div>`).join('')}
+        <p class="mut">Rule-based screening indicators, not AI predictions, future-disease probabilities, or diagnoses. Missing measurements are excluded; ask your clinician to review the source records.</p>
       </div>
-
-      <div class="card"><h2>Disease Risk Assessment</h2>
-        <div class="risk-grid">
-          ${Object.entries(r.diseaseRiskAssessment).filter(([_, v]) => !v.error).map(([condition, risk]) => {
-            const riskLevel = risk.riskLevel;
-            const bgColor = riskColor(riskLevel);
-            return `<div class="risk-card" style="border-left: 4px solid ${bgColor}">
-              <h3>${esc(condition.charAt(0).toUpperCase() + condition.slice(1))}</h3>
-              <p class="risk-score"><span style="font-size: 24px; font-weight: bold; color: ${bgColor}">${risk.riskScore}%</span></p>
-              <p><strong>Risk Level:</strong> <span style="color: ${bgColor}; font-weight: bold">${esc(riskLevel)}</span></p>
-              ${risk.riskFactors ? `<p><strong>Risk Factors:</strong></p><ul>${risk.riskFactors.map(f => `<li>${esc(f)}</li>`).join('')}</ul>` : ''}
-            </div>`;
-          }).join('')}
-        </div>
+      <div class="card"><h2>Latest report summaries</h2>
+        ${d.reports.slice(0, 3).map((r) => `<h3>${esc(r.title)} <span class="mut">${day(r.uploadedAt)}</span></h3>${summaryBlock(r)}`).join('') || '<p class="mut">No reports available.</p>'}
       </div>
-
-      <div class="card"><h2>Critical Allergy Alerts</h2>
-        ${r.allergyAlerts.criticalAlerts.length ? `
-          <div class="alert danger">
-            <h3>⚠️ Critical Allergies (${r.allergyAlerts.criticalAlerts.length})</h3>
-            <div class="allergen-list">
-              ${r.allergyAlerts.criticalAlerts.map(a => `<div class="allergen-item critical">
-                <h4>${esc(a.allergen)}</h4>
-                <p><strong>Reaction:</strong> ${esc(a.reaction)}</p>
-                <p><strong>Severity:</strong> ${badge('danger', a.severity)}</p>
-                <p class="recommendation">${esc(a.recommendedAction)}</p>
-              </div>`).join('')}
-            </div>
-          </div>
-        ` : '<p class="mut">No critical allergies recorded.</p>'}
-        ${r.allergyAlerts.warnings.length ? `
-          <div class="alert warn">
-            <h3>⚠️ Warnings (${r.allergyAlerts.warnings.length})</h3>
-            <div class="allergen-list">
-              ${r.allergyAlerts.warnings.map(a => `<div class="allergen-item warning">
-                <h4>${esc(a.allergen)}</h4>
-                <p><strong>Reaction:</strong> ${esc(a.reaction)}</p>
-                <p><strong>Severity:</strong> ${badge('warn', a.severity)}</p>
-                <p class="recommendation">${esc(a.recommendedAction)}</p>
-              </div>`).join('')}
-            </div>
-          </div>
-        ` : ''}
-      </div>
-
-      <div class="card"><h2>Clinical Summary</h2>
-        <pre class="summary-text">${esc(r.summaryReport)}</pre>
-      </div>
-
-      <div class="card"><h2>Recommendations</h2>
-        <ul>
-          ${r.recommendations.map(rec => `<li>${esc(rec)}</li>`).join('')}
-        </ul>
-      </div>
-
-      <div class="card info">
-        <p class="mut"><strong>Important:</strong> This report is for research/informational purposes only. It is not a clinical diagnosis. Please consult with your healthcare provider for medical advice and treatment decisions.</p>
-      </div>
+      <div class="card"><h2>Recorded allergies</h2>${allergyTable(d.allergies)}</div>
+      <div class="card"><h2>Current medications</h2>${medsTable(d.medications.filter((m) => m.status === 'current'))}</div>
     `);
   }
 
@@ -206,18 +139,7 @@
         ${d.timeline.map((t) => `<tr><td>${day(t.createdAt)}</td><td>${esc(t.type)}</td><td>${esc(t.title)}</td><td>${esc(t.details || '')}</td><td>${esc(t.hospitalName)}</td><td>${esc(t.author || '')}</td></tr>`).join('')}</tbody></table></div></div>`),
       timeline: () => shell('timeline', `<h1>Health Timeline</h1><div class="card">${timelineList(d.timeline)}</div>`),
       reports: () => (b ? reportView(d, b) : reportsView(d)),
-      'health-report': async () => {
-        $app.innerHTML = healthReportView(d, true);
-        try {
-          const pid = d.patient.id;
-          const response = await fetch('/getPatientReport?patientId=' + encodeURIComponent(pid));
-          if (!response.ok) throw new Error('Failed to load report');
-          const reportData = await response.json();
-          $app.innerHTML = healthReportView(d, false, reportData);
-        } catch (err) {
-          $app.innerHTML = healthReportView(d, false, null, err.message);
-        }
-      },
+      'health-report': () => healthReportView(d),
       prescriptions: () => shell('prescriptions', `<h1>Prescription History</h1><div class="card">${medsTable(d.medications)}</div>`),
       allergies: () => shell('allergies', `<h1>Allergy Information</h1><div class="card">${allergyTable(d.allergies)}</div>`),
       access: () => shell('access', `<h1>Access History</h1><p class="mut">Staff who opened or changed your record, including denied attempts.</p><div class="card">${accessTable(S.patientAccessHistory())}</div>`),

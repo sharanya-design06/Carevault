@@ -154,7 +154,7 @@
   function alertsHtml(res) {
     if (!res) return '';
     if (!res.alerts.length) return alertBox('warn', 'No alert was found in the available interaction data. This does not confirm the medication is safe; verify the full medication list with a pharmacist.');
-    return res.alerts.map((a) => alertBox(a.severity === 'major' || a.severity === 'contraindicated' ? 'danger' : 'warn', `<b>${esc(a.type === 'allergy' ? 'Allergy alert' : a.type === 'duplicate' ? 'Duplicate therapy' : 'Interaction')} · ${esc(a.severity)}</b><br>${esc(a.message)}`)).join('');
+    return res.alerts.map((a) => alertBox(a.severity === 'major' || a.severity === 'contraindicated' ? 'danger' : 'warn', `<b>${esc(a.type === 'allergy' ? 'Allergy alert' : a.type === 'duplicate' ? 'Duplicate therapy' : a.type === 'condition' ? 'Condition caution' : 'Interaction')} · ${esc(a.severity)}</b><br>${esc(a.message)}`)).join('');
   }
   function prescribeTab(d, err, form) {
     const f = form || {};
@@ -182,14 +182,8 @@
   function modelFields(condition, d) {
     const p = d.patient, c = p.clinical || {}, patientAge = Number.isFinite(age(p.dob)) ? age(p.dob) : '';
     if (condition === 'diabetes') {
-      let glucose = '';
-      for (const report of d.reports) {
-        const findings = report.summary && report.summary.findings || [];
-        const finding = findings.find((item) => /fasting glucose/i.test(item.test));
-        if (finding) { glucose = finding.value; break; }
-      }
       return modelField('Pregnancies', 'Pregnancies', '', 0, 30, 1) +
-        modelField('Glucose', 'Glucose (mg/dL)', glucose, 0, 400) +
+        modelField('Glucose', '2-hour glucose (mg/dL)', c.twoHourGlucose, 0, 400) +
         modelField('BloodPressure', 'Diastolic blood pressure (mmHg)', c.bpDia, 0, 200) +
         modelField('SkinThickness', 'Skin thickness (mm)', '', 0, 150) +
         modelField('Insulin', 'Insulin (µU/mL)', '', 0, 1000) +
@@ -203,8 +197,8 @@
         modelChoice('sex', 'Dataset sex code (0=female, 1=male)', [[0, '0 — Female'], [1, '1 — Male']], sex) +
         modelChoice('cp', 'Chest-pain category (dataset code)', [[0, '0'], [1, '1'], [2, '2'], [3, '3']]) +
         modelField('trestbps', 'Resting blood pressure (mmHg)', c.bpSys, 0, 300) +
-        modelField('chol', 'Total cholesterol (mg/dL)', '', 0, 700) +
-        modelChoice('fbs', 'Fasting blood sugar > 120 mg/dL', [[0, '0 — No'], [1, '1 — Yes']]) +
+        modelField('chol', 'Total cholesterol (mg/dL)', c.cholesterol, 0, 700) +
+        modelChoice('fbs', 'Fasting blood sugar > 120 mg/dL', [[0, '0 — No'], [1, '1 — Yes']], Number.isFinite(c.fastingGlucose) ? Number(c.fastingGlucose) > 120 ? 1 : 0 : '') +
         modelChoice('restecg', 'Resting ECG (dataset code)', [[0, '0'], [1, '1'], [2, '2']]) +
         modelField('thalach', 'Maximum heart rate', '', 0, 300) +
         modelChoice('exang', 'Exercise-induced angina', [[0, '0 — No'], [1, '1 — Yes']]) +
@@ -215,14 +209,14 @@
     }
     return modelField('Age', 'Age (years)', patientAge, 1, 120, 1) +
       modelChoice('Gender', 'Dataset gender', [[0, 'Female'], [1, 'Male']], sex) +
-      modelField('Total_Bilirubin', 'Total bilirubin', '', 0, 100) +
-      modelField('Direct_Bilirubin', 'Direct bilirubin', '', 0, 100) +
-      modelField('Alkaline_Phosphotase', 'Alkaline phosphatase', '', 0, 10000) +
-      modelField('Alamine_Aminotransferase', 'Alanine aminotransferase (ALT)', '', 0, 10000) +
-      modelField('Aspartate_Aminotransferase', 'Aspartate aminotransferase (AST)', '', 0, 10000) +
-      modelField('Total_Protiens', 'Total proteins', '', 0, 100) +
-      modelField('Albumin', 'Albumin', '', 0, 100) +
-      modelField('Albumin_and_Globulin_Ratio', 'Albumin/globulin ratio', '', 0, 100);
+      modelField('Total_Bilirubin', 'Total bilirubin', c.totalBilirubin, 0, 100) +
+      modelField('Direct_Bilirubin', 'Direct bilirubin', c.directBilirubin, 0, 100) +
+      modelField('Alkaline_Phosphotase', 'Alkaline phosphatase', c.alkalinePhosphotase, 0, 10000) +
+      modelField('Alamine_Aminotransferase', 'Alanine aminotransferase (ALT)', c.alanineAminotransferase, 0, 10000) +
+      modelField('Aspartate_Aminotransferase', 'Aspartate aminotransferase (AST)', c.aspartateAminotransferase, 0, 10000) +
+      modelField('Total_Protiens', 'Total proteins', c.totalProteins, 0, 100) +
+      modelField('Albumin', 'Albumin', c.albumin, 0, 100) +
+      modelField('Albumin_and_Globulin_Ratio', 'Albumin/globulin ratio', c.albuminGlobulinRatio, 0, 100);
   }
   function modelPopulationNote(condition) {
     const text = condition === 'diabetes'
@@ -233,72 +227,23 @@
     return `<p class="mut" data-model-population><b>Dataset scope:</b> ${esc(text)}</p>`;
   }
 
-  function renderFullReportForDoctor(r, hrid) {
-    const riskColor = (level) => ({
-      'High': '#d9534f',
-      'Moderate': '#f0ad4e',
-      'Low': '#5cb85c'
-    }[level] || '#999');
-
-    return `<div class="report-container">
-      <h3>Patient: ${esc(hrid)}</h3>
-      <p>Generated: ${new Date(r.reportMetadata.generatedAt).toLocaleDateString()}</p>
-      
-      <h4>Disease Risk Assessment</h4>
-      <div class="risk-grid">
-        ${Object.entries(r.diseaseRiskAssessment).filter(([_, v]) => !v.error).map(([condition, risk]) => {
-          const riskLevel = risk.riskLevel;
-          const bgColor = riskColor(riskLevel);
-          return `<div class="risk-card" style="border-left: 4px solid ${bgColor}; padding: 12px; margin: 8px 0;">
-            <strong>${esc(condition.charAt(0).toUpperCase() + condition.slice(1))}</strong><br>
-            <span style="font-size: 20px; font-weight: bold; color: ${bgColor}">${risk.riskScore}%</span><br>
-            <span style="color: ${bgColor}; font-weight: bold">${esc(riskLevel)} Risk</span>
-            ${risk.riskFactors ? `<br><small><strong>Factors:</strong> ${risk.riskFactors.map(f => esc(f)).join(', ')}</small>` : ''}
-          </div>`;
-        }).join('')}
-      </div>
-      
-      <h4>Critical Allergy Alerts (${r.allergyAlerts.criticalAlerts.length})</h4>
-      ${r.allergyAlerts.criticalAlerts.length ? `
-        <div class="alert danger" style="background: #f8d7da; border: 1px solid #f5c6cb; padding: 12px; margin: 8px 0; border-radius: 4px;">
-          ${r.allergyAlerts.criticalAlerts.map(a => `<div style="margin: 8px 0;"><strong>⚠️ ${esc(a.allergen)}</strong><br>
-            Reaction: ${esc(a.reaction)}<br>
-            Severity: <span style="color: #721c24; font-weight: bold">${esc(a.severity)}</span><br>
-            Action: ${esc(a.recommendedAction)}</div>`).join('')}
-        </div>
-      ` : '<p class="mut">No critical allergies.</p>'}
-      
-      <h4>Warnings (${r.allergyAlerts.warnings.length})</h4>
-      ${r.allergyAlerts.warnings.length ? `
-        <div class="alert warn" style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 12px; margin: 8px 0; border-radius: 4px;">
-          ${r.allergyAlerts.warnings.map(a => `<div style="margin: 8px 0;"><strong>⚠️ ${esc(a.allergen)}</strong><br>
-            Reaction: ${esc(a.reaction)}<br>
-            Severity: ${esc(a.severity)}<br>
-            Action: ${esc(a.recommendedAction)}</div>`).join('')}
-        </div>
-      ` : ''}
-      
-      <h4>Clinical Summary</h4>
-      <pre style="background: #f5f5f5; padding: 12px; border-radius: 4px; overflow-x: auto;">${esc(r.summaryReport)}</pre>
-      
-      <h4>Recommendations</h4>
-      <ul>
-        ${r.recommendations.map(rec => `<li>${esc(rec)}</li>`).join('')}
-      </ul>
-      
-      <p class="mut"><strong>Disclaimer:</strong> ${esc(r.reportMetadata.disclaimer)}</p>
-    </div>`;
+  function renderChartReport(d) {
+    return `<div class="card"><h3>Patient chart screening indicators</h3>${riskBars(d, true)}</div>
+      <div class="two">${allergyPanel(d)}${medPanel(d)}</div>
+      <div class="card"><h3>Recent report summaries</h3>
+        ${d.reports.slice(0, 3).map((r) => `<p><b>${esc(r.title)}</b> · ${day(r.uploadedAt)}</p>${summaryBlock(r)}`).join('') || '<p class="mut">No reports available.</p>'}
+      </div>`;
   }
 
   function riskTab(d) {
     return `<div class="card"><h2>Disease Risk Dashboard</h2>${riskBars(d, true)}</div>
-      <div class="card"><h2>Comprehensive Health Report</h2>
-        <p>AI-generated health risk assessment including disease predictions, allergy alerts, and clinical recommendations.</p>
-        <button data-action="loadFullReport" data-hrid="${esc(d.patient.hrid)}" class="primary">Load Full Report</button>
+      <div class="card"><h2>Patient Chart Summary</h2>
+        <p>Builds a summary from this patient's visible chart, report extractions, medications, allergies and recorded vitals.</p>
+        <button data-action="loadFullReport" data-hrid="${esc(d.patient.hrid)}" class="primary">Show Chart Summary</button>
         <div id="full-report" aria-live="polite"></div>
       </div>
       <div class="card"><h2>Research Model Assessment</h2>
-      <p class="mut">Optional locally trained research models. They return an uncalibrated dataset score, not a diagnosis or clinical risk. Confirm every input against the source record. No patient identifier is sent to the local service.</p>
+      <p class="mut">Optional locally trained research models. Available chart values are prefilled from this patient's record and report summaries; confirm each value and enter missing fields from source records. These models classify labels in their source datasets, not future disease onset, and their score is not a diagnosis or clinical risk. No patient identifier is sent to the local service.</p>
       <form data-form="ai-predict" data-hrid="${esc(d.patient.hrid)}"><label>Model<select name="condition" data-model-condition><option value="diabetes">Diabetes</option><option value="cardiac">Heart disease</option><option value="liver">Liver disease</option></select></label>
       <div class="grid" data-model-fields>${modelFields('diabetes', d)}</div>${modelPopulationNote('diabetes')}<p><button class="primary" type="submit">Run local research model</button></p></form>
       <div data-model-result aria-live="polite"></div><p class="mut">Requires the local Python AI service and trained model artifacts. <a href="/docs" target="_blank" rel="noopener">Local service API documentation</a>.</p></div>`;
@@ -369,7 +314,7 @@
         const result = await response.json();
         if (!response.ok) throw new Error(result.detail || 'The local model request failed.');
         const metrics = result.metrics;
-        output.innerHTML = alertBox('warn', `<b>${esc(result.prediction === 'positive' ? 'Positive model screen' : 'Negative model screen')} (${Math.round(result.modelScore * 100)}% score)</b><br>
+        output.innerHTML = alertBox('warn', `<b>${esc(result.prediction === 'positive' ? 'Positive model screen' : 'Negative model screen')} (${Math.round(result.modelScore * 100)}% dataset score)</b><br>
           Target: ${esc(result.positiveLabel)} · Model: ${esc(result.model)} · Threshold: ${esc(result.decisionThreshold)}<br>
           Holdout precision: ${esc(metrics.precision)} · recall: ${esc(metrics.recall)} · F1: ${esc(metrics.f1)} · AUC-ROC: ${esc(metrics.aucRoc)}<br>
           Population limitation: ${esc(result.populationLimitation)}<br>
@@ -427,17 +372,9 @@
     } else if (b.dataset.action === 'loadFullReport') {
       const hrid = b.dataset.hrid;
       const output = b.parentElement.querySelector('#full-report');
-      b.disabled = true;
-      output.innerHTML = alertBox('info', 'Loading comprehensive health report…');
-      try {
-        const response = await fetch('/getPatientReport?patientId=' + encodeURIComponent(hrid));
-        if (!response.ok) throw new Error('Failed to load report');
-        const reportData = await response.json();
-        output.innerHTML = renderFullReportForDoctor(reportData, hrid);
-      } catch (err) {
-        output.innerHTML = alertBox('danger', 'Failed to load report: ' + esc(err.message));
-      }
-      b.disabled = false;
+      const chart = S.doctorOpenPatient(hrid);
+      if (!chart) { output.innerHTML = alertBox('danger', 'Patient chart is no longer available.'); return; }
+      output.innerHTML = renderChartReport(chart);
     }
   });
 

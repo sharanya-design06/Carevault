@@ -60,7 +60,8 @@
     if (!res.alerts.length) return alertBox('warn', 'No alert was found in the available interaction data. This does not confirm the medication is safe; verify the full medication list with a pharmacist.');
     return res.alerts.map((a) => {
       const crit = a.severity === 'major' || a.severity === 'contraindicated';
-      return alertBox(crit ? 'danger' : 'warn', `<b>${crit ? 'CRITICAL' : 'Warning'} · ${esc(a.type === 'allergy' ? 'Allergy' : a.type === 'duplicate' ? 'Duplicate therapy' : 'Drug interaction')} (${esc(a.severity)})</b><br>${esc(a.message)}`);
+      const label = a.type === 'allergy' ? 'Allergy' : a.type === 'duplicate' ? 'Duplicate therapy' : a.type === 'condition' ? 'Condition caution' : 'Drug interaction';
+      return alertBox(crit ? 'danger' : 'warn', `<b>${crit ? 'CRITICAL' : 'Warning'} · ${esc(label)} (${esc(a.severity)})</b><br>${esc(a.message)}`);
     }).join('');
   }
 

@@ -70,6 +70,14 @@ LAB_TESTS = [
     ("Creatinine", re.compile(r"\bcreatinine\b", re.I), "mg/dL", 0.6, 1.3),
     ("eGFR", re.compile(r"\begfr\b", re.I), "mL/min/1.73m²", 60, 200),
     ("Hemoglobin", re.compile(r"\b(?:haemoglobin|hemoglobin)(?!\s*a1c)\b", re.I), "g/dL", 12, 17.5),
+    ("Total bilirubin", re.compile(r"\btotal bilirubin\b", re.I), "mg/dL", None, None),
+    ("Direct bilirubin", re.compile(r"\bdirect bilirubin\b", re.I), "mg/dL", None, None),
+    ("Alkaline phosphatase", re.compile(r"\b(?:alkaline phosphatase|alkaline phosphotase|alp)\b", re.I), "U/L", None, None),
+    ("Alanine aminotransferase", re.compile(r"\b(?:alanine aminotransferase|alamine aminotransferase|alt)\b", re.I), "U/L", None, None),
+    ("Aspartate aminotransferase", re.compile(r"\b(?:aspartate aminotransferase|ast)\b", re.I), "U/L", None, None),
+    ("Total proteins", re.compile(r"\btotal proteins?\b", re.I), "g/dL", None, None),
+    ("Albumin", re.compile(r"\balbumin\b(?!\s*/)", re.I), "g/dL", None, None),
+    ("Albumin/globulin ratio", re.compile(r"\b(?:albumin\s*/\s*globulin ratio|a\s*/\s*g ratio)\b", re.I), "", None, None),
 ]
 FINDING_LINE = re.compile(
     r"^\s*(?P<test>[A-Za-z][A-Za-z0-9 /().-]{1,60}?)\s+"
@@ -121,6 +129,7 @@ class InteractionRequest(BaseModel):
     medication: str = Field(min_length=1, max_length=120)
     current_medications: list[str] = Field(default_factory=list, max_length=100)
     allergies: list[dict[str, Any]] = Field(default_factory=list, max_length=100)
+    conditions: list[str] = Field(default_factory=list, max_length=100)
 
 
 class PredictionRequest(BaseModel):
@@ -155,13 +164,14 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
             if not match:
                 continue
             value = float(match.group("value"))
+            has_reference = low is not None and high is not None
             findings.append({
                 "test": test, "value": value, "unit": unit,
-                "range": f"{low}–{high}",
-                "flag": "low" if value < low else "high" if value > high else "normal",
+                "range": f"{low}–{high}" if has_reference else "Not configured",
+                "flag": ("low" if value < low else "high" if value > high else "normal") if has_reference else "unknown",
             })
             seen_tests.add(test)
-    abnormal = [finding for finding in findings if finding["flag"] != "normal"]
+    abnormal = [finding for finding in findings if finding["flag"] in {"low", "high"}]
     highlights = []
     for line in lines:
         if HIGHLIGHT_TERMS.search(line) and line not in highlights:
@@ -189,14 +199,14 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
         summary_text = extractive_summary(text, summarizer_vectorizer)
         summary_model = "local-tfidf-extractive-v1"
     else:
-        summary_text = ""
-        summary_model = "local-structured-extraction-v1"
+        summary_text = extractive_fallback(text)
+        summary_model = "local-rule-extractive-v1" if summary_text else "local-structured-extraction-v1"
     return {
         "headline": headline,
         "summaryText": summary_text,
         "findings": findings,
         "highlights": highlights,
-        "extracted": bool(findings or highlights[0] != "No matching conclusion or findings text was detected."),
+        "extracted": bool(findings or summary_text or highlights[0] != "No matching conclusion or findings text was detected."),
         "model": summary_model,
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "pageCount": page_count,
@@ -206,6 +216,40 @@ def summarize_text(text: str, page_count: int) -> dict[str, Any]:
             "Configured reference ranges may not match the laboratory's own ranges.",
         ],
     }
+
+
+def extractive_fallback(text: str, max_sentences: int = 3, max_chars: int = 600) -> str:
+    sentences = [
+        re.sub(r"\s+", " ", sentence).strip()
+        for sentence in re.split(r"(?<=[.!?])\s+|\n+", text)
+    ]
+    sentences = [sentence for sentence in sentences if 5 <= len(sentence.split()) <= 60]
+    if not sentences:
+        return ""
+    clinical_terms = re.compile(
+        r"\b(?:assessment|impression|conclusion|finding|diagnosis|recommend|"
+        r"abnormal|positive|negative|elevated|low|high|critical|follow.?up|"
+        r"treatment|medication|pain|blood|glucose|result|shows?)\b",
+        re.I,
+    )
+    ranked = sorted(
+        range(len(sentences)),
+        key=lambda index: (
+            -int(bool(clinical_terms.search(sentences[index]))),
+            index,
+        ),
+    )
+    selected: list[int] = []
+    length = 0
+    for index in ranked:
+        sentence = sentences[index]
+        if length + len(sentence) > max_chars:
+            continue
+        selected.append(index)
+        length += len(sentence) + 1
+        if len(selected) == max_sentences:
+            break
+    return " ".join(sentences[index] for index in sorted(selected))
 
 
 def check_interactions(request: InteractionRequest) -> dict[str, Any]:
@@ -256,11 +300,50 @@ def check_interactions(request: InteractionRequest) -> dict[str, Any]:
                     "The dataset does not provide a severity rating."
                 ),
             } for description in descriptions[:5])
+    condition_cautions = [
+        (
+            ("chronic kidney disease", "kidney disease", "renal disease", "ckd"),
+            ("ibuprofen", "naproxen", "diclofenac", "ketorolac"),
+            "NSAIDs may worsen kidney function in people with kidney disease; review renal status and alternatives.",
+        ),
+        (
+            ("heart failure", "congestive heart failure"),
+            ("ibuprofen", "naproxen", "diclofenac", "ketorolac"),
+            "NSAIDs may worsen fluid retention or heart-failure symptoms; review this combination.",
+        ),
+        (
+            ("hypertension", "high blood pressure"),
+            ("ibuprofen", "naproxen", "diclofenac", "ketorolac"),
+            "NSAIDs may affect blood-pressure control; review this combination.",
+        ),
+        (
+            ("diabetes", "diabetes mellitus"),
+            ("prednisone", "prednisolone", "dexamethasone"),
+            "Systemic corticosteroids may raise blood glucose; consider monitoring and review the treatment plan.",
+        ),
+        (
+            ("peptic ulcer", "stomach ulcer", "gastrointestinal ulcer"),
+            ("ibuprofen", "naproxen", "diclofenac", "ketorolac", "aspirin"),
+            "NSAIDs or aspirin may increase gastrointestinal bleeding risk with a documented ulcer history; review this combination.",
+        ),
+    ]
+    for terms, medications, message in condition_cautions:
+        condition_match = any(
+            term in normalize_drug(condition)
+            for condition in request.conditions
+            for term in terms
+        )
+        if condition_match and candidate_name in medications:
+            alerts.append({
+                "type": "condition",
+                "severity": "unknown",
+                "message": message + " This rule is a limited review prompt, not a contraindication or a complete interaction check.",
+            })
     return {
         "alerts": alerts,
         "matchedPairs": len([item for item in alerts if item["type"] == "interaction"]),
         "source": "Bundled CSV with unverified provenance plus demo severity examples",
-        "coverage": "Incomplete; no alert does not mean a combination is safe.",
+        "coverage": "Incomplete; only a small confirmed-diagnosis caution list is included, and no alert does not mean a combination is safe.",
     }
 
 
@@ -352,7 +435,7 @@ def health():
         "summaryMode": (
             transformer_summarizer_mode.removesuffix("-v1") if transformer_summarizer_mode
             else "local-tfidf-extractive" if summarizer_vectorizer
-            else "local-structured-extraction"
+            else "local-rule-extractive"
         ),
         "clinicalValidation": False,
     }

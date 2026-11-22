@@ -36,7 +36,9 @@ exports.getPatientReport = onRequest(
       'https://care-vault-project.web.app',
       'https://care-vault-project.firebaseapp.com',
       'http://localhost:8000',
-      'http://127.0.0.1:8000'
+      'http://127.0.0.1:8000',
+      'http://localhost:4173',
+      'http://127.0.0.1:4173'
     ]
   },
   async (req, res) => {
@@ -44,7 +46,7 @@ exports.getPatientReport = onRequest(
       return res.status(405).json({ error: 'Method not allowed' });
     }
 
-    const { patientId } = req.params;
+    const patientId = req.params.patientId || req.query.patientId;
     const format = req.query.format || 'json';
 
     if (!patientId) {
@@ -55,7 +57,6 @@ exports.getPatientReport = onRequest(
       // Check patient exists and user has access (simplified - in production, verify auth token)
       const patientRef = db.collection('patients').doc(patientId);
       const patientSnap = await patientRef.get();
-
       if (!patientSnap.exists) {
         return res.status(404).json({ error: 'Patient not found' });
       }

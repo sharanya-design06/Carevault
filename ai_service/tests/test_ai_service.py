@@ -33,7 +33,22 @@ class AiServiceTests(unittest.TestCase):
         values = {item["test"]: item["value"] for item in result["findings"]}
         self.assertEqual(values["HbA1c"], 7.4)
         self.assertEqual(values["Fasting glucose"], 132)
-        self.assertEqual(result["model"], "local-structured-extraction-v1")
+        self.assertEqual(result["model"], "local-rule-extractive-v1")
+        self.assertTrue(result["summaryText"])
+        self.assertIn("HbA1c 7.4", result["summaryText"])
+
+    def test_extracts_liver_model_values_without_inventing_reference_flags(self):
+        result = service.summarize_text(
+            "Liver panel\nTotal bilirubin 1.2 mg/dL\n"
+            "Direct bilirubin 0.3 mg/dL\nALT 28 U/L\nAlbumin 4.2 g/dL",
+            1,
+        )
+        findings = {item["test"]: item for item in result["findings"]}
+        self.assertEqual(findings["Total bilirubin"]["value"], 1.2)
+        self.assertEqual(findings["Alanine aminotransferase"]["value"], 28)
+        self.assertEqual(findings["Albumin"]["flag"], "unknown")
+        self.assertEqual(findings["Albumin"]["range"], "Not configured")
+        self.assertIn("0 are outside configured reference ranges", result["headline"])
 
     def test_prefers_local_biobert_t5_summary_when_available(self):
         original_summarizer, original_vectorizer = (
@@ -133,7 +148,7 @@ class AiServiceTests(unittest.TestCase):
                     asyncio.run(startup())
 
             status = service.health()
-            self.assertEqual(status["summaryMode"], "local-structured-extraction")
+            self.assertEqual(status["summaryMode"], "local-rule-extractive")
             self.assertFalse(status["summaryModel"])
             self.assertIn("Pretrained BioBERT/Flan-T5 unavailable", status["summaryLoadError"])
         finally:
@@ -166,6 +181,21 @@ class AiServiceTests(unittest.TestCase):
         ))
         self.assertEqual(result["alerts"][0]["type"], "allergy")
         self.assertEqual(result["alerts"][0]["severity"], "major")
+
+    def test_condition_caution_uses_confirmed_patient_diagnoses(self):
+        original_index, original_error = service.interaction_index, service.interaction_error
+        try:
+            service.interaction_index = {}
+            service.interaction_error = None
+            result = service.check_interactions(service.InteractionRequest(
+                medication="ibuprofen",
+                conditions=["N18.3 Chronic kidney disease stage 3"],
+            ))
+            self.assertEqual(result["alerts"][0]["type"], "condition")
+            self.assertEqual(result["alerts"][0]["severity"], "unknown")
+            self.assertIn("limited review prompt", result["alerts"][0]["message"])
+        finally:
+            service.interaction_index, service.interaction_error = original_index, original_error
 
     def test_missing_hypertension_model_is_explicit(self):
         with self.assertRaises(HTTPException) as raised:
